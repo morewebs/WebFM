@@ -1,0 +1,165 @@
+/*
+ * Editable canvas: breakpoint bar menu, selection chrome, draw preview and the
+ * in-place text editor. The page itself is styled by @webfm/render; shared
+ * `.wfm-canvas-*` shell classes are extended here, never redefined.
+ */
+
+.wfm-canvas-viewport {
+  outline: none;
+  touch-action: none;
+}
+
+.wfm-canvas-viewport.is-hand {
+  cursor: grab;
+}
+
+.wfm-canvas-viewport.is-hand:active {
+  cursor: grabbing;
+}
+
+.wfm-canvas-viewport.is-draw {
+  cursor: crosshair;
+}
+
+.wfm-canvas-stage {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* --------------------------------------------------------- breakpoint bar */
+
+.wfm-breakpoint-bar {
+  text-align: left;
+}
+
+.wfm-breakpoint-bar__main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  overflow: hidden;
+}
+
+.wfm-breakpoint-bar__glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  background: var(--wfm-accent);
+  color: #0b0f13;
+}
+
+.wfm-breakpoint-bar__glyph svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+.wfm-breakpoint-bar__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-breakpoint-bar__width {
+  flex: none;
+}
+
+.wfm-breakpoint-bar__add[disabled] {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.wfm-breakpoint-bar__add[disabled]:hover {
+  background: none;
+}
+
+.wfm-breakpoint-menu {
+  top: -6px;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.wfm-breakpoint-menu .wfm-menu__item.is-active {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-breakpoint-menu__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- overlays */
+
+.wfm-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.wfm-canvas-hover {
+  position: absolute;
+  pointer-events: none;
+  outline: 1px solid #0099ff;
+}
+
+.wfm-canvas-overlay .wfm-selection__handle {
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.wfm-selection__handle[data-handle="nw"],
+.wfm-selection__handle[data-handle="se"] {
+  cursor: nwse-resize;
+}
+
+.wfm-selection__handle[data-handle="ne"],
+.wfm-selection__handle[data-handle="sw"] {
+  cursor: nesw-resize;
+}
+
+.wfm-selection__handle[data-handle="n"],
+.wfm-selection__handle[data-handle="s"] {
+  cursor: ns-resize;
+}
+
+.wfm-selection__handle[data-handle="e"],
+.wfm-selection__handle[data-handle="w"] {
+  cursor: ew-resize;
+}
+
+.wfm-canvas-draw {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid var(--wfm-accent);
+  background: rgb(0 153 255 / 8%);
+}
+
+/* --------------------------------------------------------- text editing */
+
+.wfm-text-editor {
+  position: absolute;
+  z-index: 10;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: 1px solid var(--wfm-accent);
+  box-shadow: 0 0 0 1px rgb(0 153 255 / 20%);
+  resize: none;
+  overflow: hidden;
+  pointer-events: auto;
+  caret-color: var(--wfm-accent);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}

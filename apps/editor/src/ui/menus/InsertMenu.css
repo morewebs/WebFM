@@ -1,0 +1,136 @@
+/* Insert panel: Elements/CMS rail plus a second detail column. */
+
+.wfm-insert {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 256px;
+  height: 100%;
+  min-height: 0;
+}
+
+.wfm-insert__nav {
+  flex: 1;
+  min-height: 0;
+  width: 256px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.wfm-insert__search {
+  width: 100%;
+}
+
+.wfm-insert__title {
+  margin: 14px 0 4px;
+  padding: 0 6px;
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wfm-insert__row {
+  height: 40px;
+}
+
+.wfm-insert__row.is-active {
+  background: var(--wfm-surface);
+  color: var(--wfm-text);
+}
+
+.wfm-insert__row.is-active:hover {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-insert__chevron {
+  flex: none;
+  color: var(--wfm-text-faint);
+}
+
+.wfm-insert__detail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 256px;
+  z-index: 5;
+  width: 154px;
+  padding: 8px;
+  overflow-y: auto;
+  background: var(--wfm-bg);
+  border-left: 1px solid var(--wfm-border);
+}
+
+.wfm-insert__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wfm-insert-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  height: 94px;
+  padding: 10px;
+  border: 1px solid #1b1b1b;
+  border-radius: 6px;
+  background: #0d0d0d;
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+  text-align: left;
+}
+
+.wfm-insert-card:hover:not(:disabled) {
+  background: #141414;
+  color: var(--wfm-text);
+}
+
+.wfm-insert-card.is-disabled {
+  color: var(--wfm-text-faint);
+  cursor: default;
+}
+
+.wfm-insert-card__label {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-insert-card--library {
+  align-items: center;
+  justify-content: flex-start;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-insert-card--library .wfm-insert-card__label {
+  margin-top: auto;
+  align-self: center;
+}
+
+.wfm-insert-card--media .wfm-insert-card__label {
+  margin-top: auto;
+}
+
+.wfm-insert__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wfm-insert__note {
+  margin: 4px 0 0;
+  padding: 0 6px;
+  color: var(--wfm-text-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wfm-insert__error {
+  margin: 10px 0 0;
+  color: var(--wfm-danger);
+  font-size: 12px;
+  line-height: 1.5;
+}

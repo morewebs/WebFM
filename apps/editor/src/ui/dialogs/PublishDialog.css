@@ -1,0 +1,92 @@
+/* Publish modal. Shell dialog geometry, publish-specific rows and result. */
+
+.wfm-dialog__close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-dialog__close:hover {
+  background: var(--wfm-surface-hover);
+  color: var(--wfm-text);
+}
+
+.wfm-publish__summary {
+  margin: 0;
+  color: var(--wfm-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wfm-publish__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wfm-publish__label {
+  flex: 0 0 64px;
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+}
+
+.wfm-publish__value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wfm-text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-publish__select {
+  flex: 1;
+  width: 100%;
+}
+
+.wfm-publish__error {
+  padding: 10px;
+  border-radius: var(--wfm-radius);
+  background: rgb(255 107 107 / 12%);
+  color: var(--wfm-danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wfm-publish__result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--wfm-surface);
+}
+
+.wfm-publish__result-title {
+  color: var(--wfm-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.wfm-publish__meta {
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+}
+
+.wfm-publish__artifact {
+  color: var(--wfm-text-faint);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.wfm-publish__download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  text-decoration: none;
+}

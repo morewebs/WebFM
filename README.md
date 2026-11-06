@@ -14,8 +14,8 @@ npm install
 npm run dev
 ```
 
-- Editor: <http://localhost:5173>
-- API: <http://localhost:8787>
+- Editor: <http://127.0.0.1:5173>
+- API: <http://127.0.0.1:8787>
 
 Projects are stored as plain JSON under `.webfm-data/` by default. Set
 `WEBFM_DATA_DIR` to use another directory.

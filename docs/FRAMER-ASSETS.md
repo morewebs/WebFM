@@ -28,3 +28,23 @@ reference build per D17 and must be revisited before launch.
 
 If a font is extracted, check its license first. Prefer the public upstream font
 (e.g. Inter from Google Fonts) when the Framer UI uses a public typeface.
+
+## Extraction record (2026-11-06)
+
+- Source: live Framer editor, `framer.com/projects/Expanded-Author…`, 1920x897
+  viewport, logged-in Free plan.
+- Method: serialized the live DOM's `<svg>` elements and computed styles with
+  `browser_execute_script`; downloaded the font files from Framer's public static
+  host. Raw JSON kept at `.reference/framer/assets/framer-ui-assets.json`
+  (gitignored).
+- Promoted assets: `apps/editor/src/assets/framer/icons.ts` (23 chrome glyphs)
+  and `MANIFEST.json` (source index/label, dimensions, font URLs).
+- Fonts: `apps/editor/src/assets/fonts/InterVariable.latin.woff2`,
+  `InterVariable.latin-ext.woff2`, `InterVariable-Italic.latin.woff2`, wired as
+  both `Inter Variable UI` (editor chrome) and `Inter` (document text).
+  Source URLs are recorded in the manifest. Inter is SIL OFL 1.1; the OFL permits
+  redistribution. Framer's UI build is a subset of the public variable font.
+- Extracted glyphs use `currentColor`, so the shell controls their color.
+- Not extracted: the Oval tool glyph (no SVG in the captured DOM; WebFM uses a
+  one-stroke circle), icon-library logos, and interaction/component assets.
+
