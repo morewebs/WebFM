@@ -24,6 +24,7 @@ including component property controls. Interactions are the next slice.
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
+| Interactions | done | Appear/Hover/Tap with fade/slide/scale, duration, delay and easing; Preview and publish CSS; verified. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
 | Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
 | Manual verification | done for core+components | See verified list below. |
@@ -45,6 +46,11 @@ including component property controls. Interactions are the next slice.
   selects the instance; Add variant; instance variant switch changes rendered
   content; second instance inserted from Assets; publish renders both instances
   with their variant content.
+- Interactions: added Appear (slide up, 600ms) and Hover (scale) to a
+  component instance; Preview contained the keyframes and :hover rule with the
+  expected animation/transition; publish CSS contained the same; changing the
+  duration updated the CSS; removing the appear effect removed the keyframes
+  while keeping hover.
 - Property controls: added Text content + Visible bindings in component edit
   mode; instance inspector rendered the text field and switch; the text
   override changed only one instance; the switch hid the instance's text; reset
@@ -58,11 +64,12 @@ including component property controls. Interactions are the next slice.
 
 ## Next
 
-1. Interactions (appear/scroll/hover/tap) after components.
-2. Code components, then CMS.
-3. Alignment actions; text auto-rename; page background editing.
-4. Instance style overrides; per-variant property defaults; publish class
+1. Code components, then CMS.
+2. Alignment actions; text auto-rename; page background editing.
+3. Instance style overrides; per-variant property defaults; publish class
    scoping for component variants.
+4. More interaction triggers (scroll, drag) and effect types; multiple effects
+   per trigger.
 5. Cloud/auth design discussion (deferred).
 
 ## Known limits
@@ -78,5 +85,7 @@ including component property controls. Interactions are the next slice.
 - Page background editing is not exposed in the no-selection panel (matches
   Framer's Typography/Template panel).
 - Text layers do not auto-rename with content.
+- Only the first interaction per trigger (appear/hover/tap) is emitted; scroll,
+  drag and loop triggers are not built.
 - Static exports use root-absolute asset URLs (no base-path option yet).
 - Extracted Framer assets carry redistribution risk (D17).

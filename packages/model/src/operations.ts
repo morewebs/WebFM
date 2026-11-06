@@ -33,6 +33,11 @@ import type {
   Fill,
   FrameNode,
   ImageProps,
+  Interaction,
+  InteractionDirection,
+  InteractionEasing,
+  InteractionEffect,
+  InteractionTrigger,
   NodeId,
   NodeLocation,
   Page,
@@ -253,10 +258,7 @@ function writeResponsive<P extends object>(
 
 /* --------------------------------------------------------------- breakpoints */
 
-function walkDraftNode(
-  node: Draft<SceneNode>,
-  visitor: (node: Draft<SceneNode>) => void,
-): void {
+function walkDraftNode(node: Draft<SceneNode>, visitor: (node: Draft<SceneNode>) => void): void {
   visitor(node);
   if (node.type === "frame") {
     for (const child of node.children) walkDraftNode(child, visitor);
@@ -367,7 +369,9 @@ export function removeNode(draft: Draft<Project>, location: NodeLocation): void 
   const root = getTargetRoot(draft, location);
   const node = findNodeDraft(root, location.nodeId);
   if (!node) {
-    throw new Error(`Node "${location.nodeId}" was not found in ${describeTarget(draft, location)}.`);
+    throw new Error(
+      `Node "${location.nodeId}" was not found in ${describeTarget(draft, location)}.`,
+    );
   }
   if (node.id === root.id) {
     throw new Error(`Cannot remove the ${describeRootNode(location)} node "${location.nodeId}".`);
@@ -425,12 +429,16 @@ export function duplicateNode(draft: Draft<Project>, location: NodeLocation): No
   const root = getTargetRoot(draft, location);
   const node = findNodeDraft(root, location.nodeId);
   if (!node) {
-    throw new Error(`Node "${location.nodeId}" was not found in ${describeTarget(draft, location)}.`);
+    throw new Error(
+      `Node "${location.nodeId}" was not found in ${describeTarget(draft, location)}.`,
+    );
   }
 
   const parent = findParentDraft(root, location.nodeId);
   if (!parent) {
-    throw new Error(`Cannot duplicate the ${describeRootNode(location)} node "${location.nodeId}".`);
+    throw new Error(
+      `Cannot duplicate the ${describeRootNode(location)} node "${location.nodeId}".`,
+    );
   }
 
   const index = parent.children.findIndex((child) => child.id === location.nodeId);
@@ -496,8 +504,123 @@ export function setNodeVisible(
   getTargetNodeOrThrow(draft, location, location.nodeId).visible = visible;
 }
 
-export function setNodeLocked(draft: Draft<Project>, location: NodeLocation, locked: boolean): void {
+export function setNodeLocked(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  locked: boolean,
+): void {
   getTargetNodeOrThrow(draft, location, location.nodeId).locked = locked;
+}
+
+/* -------------------------------------------------------------- interactions */
+
+const INTERACTION_TRIGGERS: readonly InteractionTrigger[] = ["appear", "hover", "tap"];
+const INTERACTION_EFFECTS: readonly InteractionEffect[] = ["fade", "slide", "scale"];
+const INTERACTION_DIRECTIONS: readonly InteractionDirection[] = ["up", "down", "left", "right"];
+const INTERACTION_EASINGS: readonly InteractionEasing[] = ["ease", "linear", "ease-in", "ease-out"];
+const MAX_INTERACTION_TIME = 10000;
+
+/** Input for `addInteraction`: an interaction without, or with, an id. */
+export type InteractionInput = Omit<Interaction, "id"> & { id?: string };
+
+function assertOneOf<T extends string>(
+  field: string,
+  value: string,
+  allowed: readonly T[],
+): asserts value is T {
+  if (!allowed.includes(value as T)) {
+    throw new Error(
+      `Interaction ${field} must be one of ${allowed.map((entry) => `"${entry}"`).join(", ")}, received "${String(value)}".`,
+    );
+  }
+}
+
+function assertInteractionTime(field: "duration" | "delay", value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_INTERACTION_TIME) {
+    throw new Error(
+      `Interaction ${field} must be a whole number from 0 to ${MAX_INTERACTION_TIME}, received ${String(value)}.`,
+    );
+  }
+}
+
+function validateInteraction(input: Partial<InteractionInput>): void {
+  if (input.trigger !== undefined) assertOneOf("trigger", input.trigger, INTERACTION_TRIGGERS);
+  if (input.effect !== undefined) assertOneOf("effect", input.effect, INTERACTION_EFFECTS);
+  if (input.direction !== undefined) {
+    assertOneOf("direction", input.direction, INTERACTION_DIRECTIONS);
+  }
+  if (input.easing !== undefined) assertOneOf("easing", input.easing, INTERACTION_EASINGS);
+  if (input.duration !== undefined) assertInteractionTime("duration", input.duration);
+  if (input.delay !== undefined) assertInteractionTime("delay", input.delay);
+}
+
+function getInteractionOrThrow(node: Draft<SceneNode>, interactionId: string): Draft<Interaction> {
+  const interaction = node.interactions?.find((candidate) => candidate.id === interactionId);
+  if (!interaction) {
+    throw new Error(`Interaction "${interactionId}" was not found on node "${node.id}".`);
+  }
+  return interaction;
+}
+
+/** Adds an effect to a node and returns its id. */
+export function addInteraction(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  input: InteractionInput,
+): string {
+  validateInteraction(input);
+  const node = getTargetNodeOrThrow(draft, location, location.nodeId);
+
+  if (!node.interactions) node.interactions = [];
+  const interactions = node.interactions;
+
+  let id = input.id;
+  if (id !== undefined) {
+    if (interactions.some((candidate) => candidate.id === id)) {
+      throw new Error(`Interaction id "${id}" is already used on node "${node.id}".`);
+    }
+  } else {
+    do {
+      id = createId("interaction");
+    } while (interactions.some((candidate) => candidate.id === id));
+  }
+
+  const { id: _ignored, ...fields } = input;
+  interactions.push({ id, ...fields });
+  return id;
+}
+
+/** Applies a validated patch to an existing effect. */
+export function updateInteraction(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  interactionId: string,
+  patch: Partial<Omit<Interaction, "id">>,
+): void {
+  const node = getTargetNodeOrThrow(draft, location, location.nodeId);
+  const interaction = getInteractionOrThrow(node, interactionId);
+  validateInteraction(patch);
+
+  if (patch.trigger !== undefined) interaction.trigger = patch.trigger;
+  if (patch.effect !== undefined) interaction.effect = patch.effect;
+  if (patch.direction !== undefined) interaction.direction = patch.direction;
+  if (patch.duration !== undefined) interaction.duration = patch.duration;
+  if (patch.delay !== undefined) interaction.delay = patch.delay;
+  if (patch.easing !== undefined) interaction.easing = patch.easing;
+}
+
+/** Removes an effect from a node. */
+export function removeInteraction(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  interactionId: string,
+): void {
+  const node = getTargetNodeOrThrow(draft, location, location.nodeId);
+  const index = node.interactions?.findIndex((candidate) => candidate.id === interactionId) ?? -1;
+  if (!node.interactions || index === -1) {
+    throw new Error(`Interaction "${interactionId}" was not found on node "${node.id}".`);
+  }
+  node.interactions.splice(index, 1);
 }
 
 /* ---------------------------------------------------------------- components */

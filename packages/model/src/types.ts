@@ -76,12 +76,36 @@ export interface Responsive<T> {
 export type SceneNode = FrameNode | TextNode | ImageNode | ComponentInstanceNode;
 export type NodeType = SceneNode["type"];
 
+export type InteractionTrigger = "appear" | "hover" | "tap";
+export type InteractionEffect = "fade" | "slide" | "scale";
+export type InteractionDirection = "up" | "down" | "left" | "right";
+export type InteractionEasing = "ease" | "linear" | "ease-in" | "ease-out";
+
+/** One Appear, Hover or Tap effect attached to a node. */
+export interface Interaction {
+  id: string;
+  trigger: InteractionTrigger;
+  effect: InteractionEffect;
+  /** Slide direction; ignored for fade and scale. */
+  direction: InteractionDirection;
+  /** Milliseconds. */
+  duration: number;
+  /** Milliseconds. */
+  delay: number;
+  easing: InteractionEasing;
+}
+
 export interface NodeBase<P> {
   id: NodeId;
   name: string;
   visible: boolean;
   locked: boolean;
   responsive: Responsive<P>;
+  /**
+   * Ordered effects. Optional so projects authored before interactions existed
+   * keep loading unchanged.
+   */
+  interactions?: Interaction[];
 }
 
 export interface FrameNode extends NodeBase<BoxProps> {

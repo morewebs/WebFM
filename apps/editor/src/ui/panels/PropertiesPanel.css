@@ -488,3 +488,80 @@
   background: var(--wfm-surface-hover);
   color: var(--wfm-component);
 }
+
+/* ------------------------------------------------------------------ effects */
+
+.wfm-pp__effect-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wfm-pp__effect {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--wfm-border-soft);
+  border-radius: 6px;
+  background: var(--wfm-bg);
+}
+
+.wfm-pp__effect-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--wfm-control-h);
+}
+
+.wfm-pp__effect-row--params {
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-height: 0;
+}
+
+.wfm-pp__effect-trigger {
+  flex: 0 0 82px;
+  width: 82px;
+}
+
+.wfm-pp__effect-kind {
+  flex: 1;
+  min-width: 0;
+}
+
+.wfm-pp__effect-remove {
+  flex: none;
+}
+
+.wfm-pp__effect-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--wfm-control-h);
+}
+
+.wfm-pp__effect-control--grow {
+  flex: 1;
+  min-width: 96px;
+}
+
+.wfm-pp__effect-label {
+  flex: 0 0 auto;
+  color: var(--wfm-text-dim);
+  font-size: 11px;
+}
+
+.wfm-pp__effect-number {
+  width: 44px;
+  text-align: right;
+}
+
+.wfm-pp__effect-direction {
+  width: 70px;
+}
+
+.wfm-pp__effect-easing {
+  flex: 1;
+  min-width: 0;
+}

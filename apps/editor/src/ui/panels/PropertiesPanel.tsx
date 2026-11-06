@@ -10,6 +10,7 @@
 
 import {
   addComponentProperty,
+  addInteraction,
   type Border,
   type BoxProps,
   type Breakpoint,
@@ -26,12 +27,19 @@ import {
   findNode,
   type ImageNode,
   type ImageProps,
+  type Interaction,
+  type InteractionDirection,
+  type InteractionEasing,
+  type InteractionEffect,
+  type InteractionTrigger,
   type LayoutProps,
   type NodeId,
+  type NodeLocation,
   type Project,
   type PropertyBinding,
   removeComponentProperty,
   removeInstancePropertyValue,
+  removeInteraction,
   resolveNodeProps,
   type SceneNode,
   type SceneTarget,
@@ -45,6 +53,7 @@ import {
   setInstancePropertyValue,
   type TextAlign,
   type TextProps,
+  updateInteraction,
   type VariantId,
 } from "@webfm/model";
 import { resolveFillStyles } from "@webfm/render";
@@ -2092,6 +2101,7 @@ function InstanceInspector({ node, project, breakpointId, target }: InstanceInsp
           ))}
         </Section>
       ) : null}
+      <EffectsSection node={node} target={target} />
       <Section title="Overrides">
         <p className="wfm-pp__note">Style and content overrides on instances are the next slice.</p>
       </Section>
@@ -2180,6 +2190,280 @@ function ComponentModePanel({ component, variant, project }: ComponentModePanelP
   );
 }
 
+/* ------------------------------------------------------------------ effects */
+
+interface EffectOption<T extends string> {
+  value: T;
+  label: string;
+}
+
+const EFFECT_TRIGGERS: ReadonlyArray<EffectOption<InteractionTrigger>> = [
+  { value: "appear", label: "Appear" },
+  { value: "hover", label: "Hover" },
+  { value: "tap", label: "Tap" },
+];
+
+const EFFECT_KINDS: ReadonlyArray<EffectOption<InteractionEffect>> = [
+  { value: "fade", label: "Fade" },
+  { value: "slide", label: "Slide" },
+  { value: "scale", label: "Scale" },
+];
+
+const EFFECT_DIRECTIONS: ReadonlyArray<EffectOption<InteractionDirection>> = [
+  { value: "up", label: "Up" },
+  { value: "down", label: "Down" },
+  { value: "left", label: "Left" },
+  { value: "right", label: "Right" },
+];
+
+const EFFECT_EASINGS: ReadonlyArray<EffectOption<InteractionEasing>> = [
+  { value: "ease", label: "Ease" },
+  { value: "linear", label: "Linear" },
+  { value: "ease-in", label: "Ease In" },
+  { value: "ease-out", label: "Ease Out" },
+];
+
+/** Framer's defaults: Appear fades, Hover and Tap scale. */
+const EFFECT_DEFAULTS: Record<InteractionTrigger, InteractionEffect> = {
+  appear: "fade",
+  hover: "scale",
+  tap: "scale",
+};
+
+const MAX_EFFECT_TIME = 10000;
+
+interface EffectsAddMenuProps {
+  onAdd: (trigger: InteractionTrigger) => void;
+}
+
+function EffectsAddMenu({ onAdd }: EffectsAddMenuProps) {
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        wrapper.current &&
+        event.target instanceof Node &&
+        !wrapper.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <span className="wfm-pp__menu-wrap" ref={wrapper}>
+      <button
+        type="button"
+        className="wfm-section__add"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Add effect"
+        title="Add effect"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="plus" size={14} />
+      </button>
+      {open ? (
+        <div className="wfm-pp__prop-menu" role="menu">
+          {EFFECT_TRIGGERS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="menuitem"
+              className="wfm-pp__prop-item"
+              onClick={() => {
+                onAdd(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+interface EffectsSectionProps {
+  node: SceneNode;
+  target: SceneTarget;
+}
+
+/**
+ * Ordered Appear/Hover/Tap effects for one node. Every write goes through
+ * `applyRecipe` so undo, autosave and the publish CSS see it. Number fields
+ * commit on blur/Enter, so a typed duration is one history entry.
+ */
+function EffectsSection({ node, target }: EffectsSectionProps) {
+  const applyRecipe = useProjectStore((state) => state.applyRecipe);
+  const interactions = node.interactions ?? [];
+  const location: NodeLocation = { ...target, nodeId: node.id };
+
+  const addEffect = (trigger: InteractionTrigger) => {
+    applyRecipe("Add effect", (draft) => {
+      addInteraction(draft, location, {
+        trigger,
+        effect: EFFECT_DEFAULTS[trigger],
+        direction: "down",
+        duration: 300,
+        delay: 0,
+        easing: "ease",
+      });
+    });
+  };
+
+  const updateEffect = (interactionId: string, patch: Partial<Omit<Interaction, "id">>) => {
+    applyRecipe("Update effect", (draft) => {
+      updateInteraction(draft, location, interactionId, patch);
+    });
+  };
+
+  const removeEffect = (interactionId: string) => {
+    applyRecipe("Remove effect", (draft) => {
+      removeInteraction(draft, location, interactionId);
+    });
+  };
+
+  return (
+    <Section title="Effects" add={<EffectsAddMenu onAdd={addEffect} />}>
+      {interactions.length === 0 ? (
+        <p className="wfm-pp__note">No effects yet. Use + to add an appear, hover or tap effect.</p>
+      ) : (
+        <div className="wfm-pp__effect-list">
+          {interactions.map((interaction) => (
+            <div key={interaction.id} className="wfm-pp__effect">
+              <div className="wfm-row wfm-pp__effect-row">
+                <select
+                  className="wfm-select wfm-pp__effect-trigger"
+                  value={interaction.trigger}
+                  aria-label="Effect trigger"
+                  onChange={(event) =>
+                    updateEffect(interaction.id, {
+                      trigger: event.target.value as InteractionTrigger,
+                    })
+                  }
+                >
+                  {EFFECT_TRIGGERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="wfm-select wfm-pp__effect-kind"
+                  value={interaction.effect}
+                  aria-label="Effect"
+                  onChange={(event) =>
+                    updateEffect(interaction.id, {
+                      effect: event.target.value as InteractionEffect,
+                    })
+                  }
+                >
+                  {EFFECT_KINDS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="wfm-remove wfm-pp__effect-remove"
+                  title="Remove effect"
+                  aria-label="Remove effect"
+                  onClick={() => removeEffect(interaction.id)}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+              <div className="wfm-row wfm-pp__effect-row wfm-pp__effect-row--params">
+                {interaction.effect === "slide" ? (
+                  <label className="wfm-pp__effect-control">
+                    <span className="wfm-row__label wfm-pp__effect-label">Direction</span>
+                    <select
+                      className="wfm-select wfm-pp__effect-direction"
+                      value={interaction.direction}
+                      aria-label="Slide direction"
+                      onChange={(event) =>
+                        updateEffect(interaction.id, {
+                          direction: event.target.value as InteractionDirection,
+                        })
+                      }
+                    >
+                      {EFFECT_DIRECTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <div className="wfm-pp__effect-control">
+                  <span className="wfm-row__label wfm-pp__effect-label">Duration</span>
+                  <NumberField
+                    value={interaction.duration}
+                    min={0}
+                    max={MAX_EFFECT_TIME}
+                    onCommit={(value) =>
+                      updateEffect(interaction.id, { duration: Math.round(value) })
+                    }
+                    ariaLabel="Effect duration"
+                    className="wfm-pp__effect-number"
+                  />
+                  <span className="wfm-pp__unit">ms</span>
+                </div>
+                <div className="wfm-pp__effect-control">
+                  <span className="wfm-row__label wfm-pp__effect-label">Delay</span>
+                  <NumberField
+                    value={interaction.delay}
+                    min={0}
+                    max={MAX_EFFECT_TIME}
+                    onCommit={(value) => updateEffect(interaction.id, { delay: Math.round(value) })}
+                    ariaLabel="Effect delay"
+                    className="wfm-pp__effect-number"
+                  />
+                  <span className="wfm-pp__unit">ms</span>
+                </div>
+                <label className="wfm-pp__effect-control wfm-pp__effect-control--grow">
+                  <span className="wfm-row__label wfm-pp__effect-label">Easing</span>
+                  <select
+                    className="wfm-select wfm-pp__effect-easing"
+                    value={interaction.easing}
+                    aria-label="Effect easing"
+                    onChange={(event) =>
+                      updateEffect(interaction.id, {
+                        easing: event.target.value as InteractionEasing,
+                      })
+                    }
+                  >
+                    {EFFECT_EASINGS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 /* ------------------------------------------------------------------- panel */
 
 function MultipleSelectionPanel({ count }: { count: number }) {
@@ -2197,9 +2481,10 @@ interface NodeInspectorProps {
   project: Project;
   breakpointId: BreakpointId;
   component: ComponentDefinition | null;
+  target: SceneTarget;
 }
 
-function NodeInspector({ node, project, breakpointId, component }: NodeInspectorProps) {
+function NodeInspector({ node, project, breakpointId, component, target }: NodeInspectorProps) {
   const box = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints);
 
   return (
@@ -2217,7 +2502,7 @@ function NodeInspector({ node, project, breakpointId, component }: NodeInspector
       />
       <Section title="Overlays" placeholder />
       <Section title="Cursor" placeholder />
-      <Section title="Effects" placeholder />
+      <EffectsSection node={node} target={target} />
       <StylesSection nodeId={node.id} style={box.style} project={project} />
       {component ? (
         <ComponentPropertiesSection
@@ -2275,6 +2560,7 @@ export function PropertiesPanel() {
       project={project}
       breakpointId={activeBreakpointId}
       component={scene.kind === "component" ? scene.component : null}
+      target={scene.target}
     />
   );
 }

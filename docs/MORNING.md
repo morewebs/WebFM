@@ -43,7 +43,7 @@ Chrome.
 
 **Interactions** — Appear/Hover/Tap with Fade/Slide/Scale, duration, delay and
 easing in the Effects section; CSS keyframes/transitions in Preview and publish.
-(If this line is present, it was verified.)
+Verified in Chrome, including the published CSS.
 
 ## Verified in Chrome
 
@@ -65,7 +65,7 @@ that were exercised and the bugs found while verifying them.
 
 ## Next slices
 
-Interactions (if not done), code components, CMS, then cloud/auth.
+Code components, CMS, alignment and more interaction triggers, then cloud/auth.
 
 ## Where to look
 
