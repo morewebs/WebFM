@@ -117,6 +117,95 @@
   white-space: nowrap;
 }
 
+.wfm-menu__item.wfm-breakpoint-menu__row {
+  padding: 0;
+  gap: 0;
+}
+
+.wfm-breakpoint-menu__select {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.wfm-breakpoint-menu__delete {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--wfm-text-dim);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.wfm-breakpoint-menu__delete:hover {
+  background: rgb(255 255 255 / 8%);
+  color: var(--wfm-text);
+}
+
+/* Anchored at the + on the right edge of the bar. The stage is scaled by the
+   zoom, so the menu counter-scales exactly like the breakpoint switcher. */
+.wfm-menu.wfm-breakpoint-add-menu {
+  top: -6px;
+  right: 0;
+  transform-origin: 100% 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.wfm-breakpoint-add-menu__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wfm-breakpoint-add-menu__label {
+  flex: 0 0 40px;
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+}
+
+.wfm-breakpoint-add-menu .wfm-breakpoint-add-menu__input {
+  flex: 1;
+  width: 100%;
+}
+
+.wfm-breakpoint-add-menu .wfm-breakpoint-add-menu__number {
+  flex: 1;
+  width: auto;
+}
+
+.wfm-breakpoint-add-menu__error {
+  margin: 0;
+  color: var(--wfm-danger);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wfm-breakpoint-add-menu__submit {
+  height: var(--wfm-control-h);
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.wfm-breakpoint-add-menu__submit:hover {
+  background: #1aa3ff;
+}
+
 /* ------------------------------------------------------------- overlays */
 
 .wfm-canvas-overlay {

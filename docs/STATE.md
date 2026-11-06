@@ -22,7 +22,7 @@ including component property controls. Interactions are the next slice.
 | Editor shell | done | Exact Framer 3.0 geometry (51px top bar, 260px panels), extracted Inter UI font and chrome SVGs. |
 | Canvas | done | Select, move, resize, text edit, draw tools, zoom/pan, breakpoint bar states, component stage and bar. |
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
-| Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides verified; add/remove not built. |
+| Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
 | Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
@@ -39,6 +39,7 @@ including component property controls. Interactions are the next slice.
 - Pages add/switch; layer trees restore per page.
 - Assets: image upload via API, asset card, image insertion, publish copy.
 - Publish dialog and static export; preview overlay; reload persistence.
+- Breakpoints: + added a Custom 1000 breakpoint (active, page 1000 wide, root override), the switcher listed it with a remove ×, and removing the active breakpoint fell back to Desktop 1200 and removed its overrides.
 - Components: create from a frame with Ctrl+Alt+K, component edit mode shows
   the ComponentBar and variant root; master text edit commits; Back to page
   selects the instance; Add variant; instance variant switch changes rendered
@@ -59,7 +60,7 @@ including component property controls. Interactions are the next slice.
 
 1. Interactions (appear/scroll/hover/tap) after components.
 2. Code components, then CMS.
-3. Add/remove custom breakpoints; alignment actions; text auto-rename.
+3. Alignment actions; text auto-rename; page background editing.
 4. Instance style overrides; per-variant property defaults; publish class
    scoping for component variants.
 5. Cloud/auth design discussion (deferred).

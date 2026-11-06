@@ -251,6 +251,95 @@ function writeResponsive<P extends object>(
   node.responsive.overrides[breakpointId] = mergeDeep<P>(existing, patch) as DeepPartial<P>;
 }
 
+/* --------------------------------------------------------------- breakpoints */
+
+function walkDraftNode(
+  node: Draft<SceneNode>,
+  visitor: (node: Draft<SceneNode>) => void,
+): void {
+  visitor(node);
+  if (node.type === "frame") {
+    for (const child of node.children) walkDraftNode(child, visitor);
+  }
+}
+
+/**
+ * Adds a breakpoint and makes every page root match its canvas width. The list
+ * stays ordered widest to narrowest; equal widths keep insertion order.
+ * Component variant roots are left untouched because their size is authored.
+ */
+export function addBreakpoint(
+  draft: Draft<Project>,
+  options: { name: string; width: number; id?: BreakpointId },
+): BreakpointId {
+  const name = options.name.trim();
+  if (name.length === 0) throw new Error("Breakpoint name cannot be empty.");
+
+  const width = options.width;
+  if (!Number.isFinite(width) || !Number.isInteger(width) || width < 1 || width > 10000) {
+    throw new Error(
+      `Breakpoint width must be a whole number from 1 to 10000, received ${String(width)}.`,
+    );
+  }
+  const primary = draft.breakpoints[0];
+  if (primary && width >= primary.width) {
+    throw new Error(
+      `Breakpoint width must be narrower than the primary breakpoint (${primary.width}px).`,
+    );
+  }
+
+  if (draft.breakpoints.some((breakpoint) => breakpoint.name === name)) {
+    throw new Error(`A breakpoint named "${name}" already exists.`);
+  }
+
+  const id = options.id ?? createId("bp");
+  if (draft.breakpoints.some((breakpoint) => breakpoint.id === id)) {
+    throw new Error(`Breakpoint id "${id}" is already used.`);
+  }
+
+  const index = draft.breakpoints.findIndex((breakpoint) => breakpoint.width < width);
+  if (index === -1) {
+    draft.breakpoints.push({ id, name, width });
+  } else {
+    draft.breakpoints.splice(index, 0, { id, name, width });
+  }
+
+  for (const page of draft.pages) {
+    const root = page.root;
+    const existing = root.responsive.overrides[id];
+    root.responsive.overrides[id] = {
+      ...(existing ?? {}),
+      size: {
+        ...(existing?.size ?? {}),
+        width: { mode: "fixed", value: width },
+      },
+    };
+  }
+
+  return id;
+}
+
+/**
+ * Removes a breakpoint and every override stored under it. The primary and the
+ * last breakpoint cannot be removed, since the project needs a fallback.
+ */
+export function removeBreakpoint(draft: Draft<Project>, breakpointId: BreakpointId): void {
+  const index = draft.breakpoints.findIndex((breakpoint) => breakpoint.id === breakpointId);
+  if (index === -1) throw new Error(`Breakpoint "${breakpointId}" was not found.`);
+  if (draft.breakpoints.length <= 1) throw new Error("Cannot remove the last breakpoint.");
+  if (index === 0) throw new Error("Cannot remove the primary breakpoint.");
+
+  draft.breakpoints.splice(index, 1);
+
+  const removeOverride = (node: Draft<SceneNode>): void => {
+    delete node.responsive.overrides[breakpointId];
+  };
+  for (const page of draft.pages) walkDraftNode(page.root, removeOverride);
+  for (const component of draft.components) {
+    for (const variant of component.variants) walkDraftNode(variant.root, removeOverride);
+  }
+}
+
 /* --------------------------------------------------------------------- nodes */
 
 export function insertNode(

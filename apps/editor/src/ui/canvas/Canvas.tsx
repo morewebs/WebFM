@@ -459,6 +459,8 @@ export function Canvas() {
   const zoom = useProjectStore((state) => state.zoom);
   const pan = useProjectStore((state) => state.pan);
   const setActiveBreakpoint = useProjectStore((state) => state.setActiveBreakpoint);
+  const addBreakpoint = useProjectStore((state) => state.addBreakpoint);
+  const removeBreakpoint = useProjectStore((state) => state.removeBreakpoint);
   const updateText = useProjectStore((state) => state.updateText);
 
   const tool = useUIStore((state) => state.tool);
@@ -470,6 +472,8 @@ export function Canvas() {
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionRef = useRef<Session | null>(null);
   const rectsRef = useRef<Map<NodeId, CanvasRect>>(new Map());
@@ -480,6 +484,10 @@ export function Canvas() {
   const [rects, setRects] = useState<Map<NodeId, CanvasRect>>(() => new Map());
   const [drawRect, setDrawRect] = useState<CanvasRect | null>(null);
   const [breakpointMenuOpen, setBreakpointMenuOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [newBreakpointName, setNewBreakpointName] = useState("Custom");
+  const [newBreakpointWidth, setNewBreakpointWidth] = useState("1000");
+  const [addBreakpointError, setAddBreakpointError] = useState<string | null>(null);
   const [spaceDown, setSpaceDown] = useState(false);
   const [editing, setEditing] = useState<EditingState | null>(null);
 
@@ -558,6 +566,26 @@ export function Canvas() {
       cancelAnimationFrame(frame);
     };
   }, [measureRects]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (addMenuRef.current?.contains(target)) return;
+      if (addButtonRef.current?.contains(target)) return;
+      setAddMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setAddMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [addMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -714,6 +742,40 @@ export function Canvas() {
     setEditing(null);
   };
 
+  /* ----------------------------------------------------------- breakpoints */
+
+  const toggleAddBreakpointMenu = (): void => {
+    if (addMenuOpen) {
+      setAddMenuOpen(false);
+      return;
+    }
+    setBreakpointMenuOpen(false);
+    setNewBreakpointName("Custom");
+    setNewBreakpointWidth("1000");
+    setAddBreakpointError(null);
+    setAddMenuOpen(true);
+  };
+
+  const submitAddBreakpoint = (): void => {
+    const name = newBreakpointName.trim();
+    if (name.length === 0) {
+      setAddBreakpointError("Enter a breakpoint name.");
+      return;
+    }
+    const width = Number(newBreakpointWidth.trim());
+    if (!Number.isInteger(width) || width < 1 || width > 10000) {
+      setAddBreakpointError("Width must be a whole number from 1 to 10000.");
+      return;
+    }
+    const breakpointId = addBreakpoint(name, width);
+    if (breakpointId === null) {
+      setAddBreakpointError(useProjectStore.getState().error ?? "Could not add the breakpoint.");
+      return;
+    }
+    setAddBreakpointError(null);
+    setAddMenuOpen(false);
+  };
+
   /* --------------------------------------------------------------- pointer */
 
   const startPan = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -746,6 +808,7 @@ export function Canvas() {
     if (event.button === 2) return;
 
     setBreakpointMenuOpen(false);
+    setAddMenuOpen(false);
 
     const state = useProjectStore.getState();
     state.setHovered(null);
@@ -1141,7 +1204,10 @@ export function Canvas() {
             type="button"
             className="wfm-breakpoint-bar__main"
             title="Switch breakpoint"
-            onClick={() => setBreakpointMenuOpen((open) => !open)}
+            onClick={() => {
+              setAddMenuOpen(false);
+              setBreakpointMenuOpen((open) => !open);
+            }}
           >
             <span className="wfm-breakpoint-bar__glyph">
               <Icon name="play" size={9} />
@@ -1150,14 +1216,82 @@ export function Canvas() {
             <span className="wfm-breakpoint-bar__width">{breakpoint.width}</span>
           </button>
           <button
+            ref={addButtonRef}
             type="button"
             className="wfm-breakpoint-bar__add"
-            title="Adding breakpoints is not in this build"
-            disabled
+            title="Add breakpoint"
+            aria-haspopup="menu"
+            aria-expanded={addMenuOpen}
+            onClick={toggleAddBreakpointMenu}
           >
             <Icon name="plus" size={12} />
           </button>
         </div>
+
+        {addMenuOpen ? (
+          <div
+            ref={addMenuRef}
+            className="wfm-menu wfm-breakpoint-add-menu"
+            style={{
+              transform: `scale(${1 / zoom})`,
+              maxWidth: viewportWidth > 0 ? Math.max(180, viewportWidth - 24) : undefined,
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="wfm-breakpoint-add-menu__row">
+              <span className="wfm-breakpoint-add-menu__label">Name</span>
+              <input
+                className="wfm-field wfm-breakpoint-add-menu__input"
+                value={newBreakpointName}
+                aria-label="Breakpoint name"
+                onChange={(event) => {
+                  setNewBreakpointName(event.target.value);
+                  setAddBreakpointError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitAddBreakpoint();
+                  }
+                }}
+              />
+            </div>
+            <div className="wfm-breakpoint-add-menu__row">
+              <span className="wfm-breakpoint-add-menu__label">Width</span>
+              <input
+                className="wfm-field wfm-field--number wfm-breakpoint-add-menu__number"
+                type="number"
+                min={1}
+                max={10000}
+                step={1}
+                value={newBreakpointWidth}
+                aria-label="Breakpoint width"
+                onChange={(event) => {
+                  setNewBreakpointWidth(event.target.value);
+                  setAddBreakpointError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitAddBreakpoint();
+                  }
+                }}
+              />
+            </div>
+            {addBreakpointError ? (
+              <p className="wfm-breakpoint-add-menu__error" role="alert">
+                {addBreakpointError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="wfm-breakpoint-add-menu__submit"
+              onClick={submitAddBreakpoint}
+            >
+              Add
+            </button>
+          </div>
+        ) : null}
 
         {breakpointMenuOpen ? (
           <div
@@ -1165,20 +1299,40 @@ export function Canvas() {
             style={{ transform: `scale(${1 / zoom})` }}
             onPointerDown={(event) => event.stopPropagation()}
           >
-            {project.breakpoints.map((entry) => (
-              <button
+            {project.breakpoints.map((entry, index) => (
+              <div
                 key={entry.id}
-                type="button"
-                className={`wfm-menu__item ${entry.id === activeBreakpointId ? "is-active" : ""}`}
-                onClick={() => {
-                  setActiveBreakpoint(entry.id);
-                  setBreakpointMenuOpen(false);
-                }}
+                className={`wfm-menu__item wfm-breakpoint-menu__row ${
+                  entry.id === activeBreakpointId ? "is-active" : ""
+                }`}
               >
-                <span className="wfm-breakpoint-menu__name">{entry.name}</span>
-                <span className="wfm-menu__shortcut">{entry.width}</span>
-                {entry.id === activeBreakpointId ? <Icon name="check" size={12} /> : null}
-              </button>
+                <button
+                  type="button"
+                  className="wfm-breakpoint-menu__select"
+                  onClick={() => {
+                    setActiveBreakpoint(entry.id);
+                    setBreakpointMenuOpen(false);
+                  }}
+                >
+                  <span className="wfm-breakpoint-menu__name">{entry.name}</span>
+                  <span className="wfm-menu__shortcut">{entry.width}</span>
+                  {entry.id === activeBreakpointId ? <Icon name="check" size={12} /> : null}
+                </button>
+                {index > 0 ? (
+                  <button
+                    type="button"
+                    className="wfm-breakpoint-menu__delete"
+                    title="Remove breakpoint"
+                    aria-label={`Remove breakpoint ${entry.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeBreakpoint(entry.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
         ) : null}
