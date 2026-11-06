@@ -1,2 +1,59 @@
 # WebFM
-WebFM — an open-source, Framer-familiar visual web design editor.
+
+An open-source, Framer-familiar visual web design editor. Framer's editor is the
+reference: the same information architecture, panel placement, terminology,
+shortcuts, interactions and dark visual language, rebuilt from scratch.
+
+**Status: early development.** The core editor is being built in public. Nothing
+here is production-ready yet.
+
+## Quick start
+
+```bash
+npm install
+npm run dev
+```
+
+- Editor: <http://localhost:5173>
+- API: <http://localhost:8787>
+
+Projects are stored as plain JSON under `.webfm-data/` by default. Set
+`WEBFM_DATA_DIR` to use another directory.
+
+## What is here
+
+| Path | Purpose |
+| --- | --- |
+| `packages/model` | Versioned project document, operations, history. No DOM. |
+| `packages/render` | Shared React/DOM renderer used by the editor and the publisher. |
+| `packages/publish` | `PublishAdapter` interface, static-site exporter, zip output. |
+| `apps/server` | Local/cloud-ready HTTP API, filesystem project store, assets. |
+| `apps/editor` | The editor UI (Vite + React + TypeScript). |
+| `docs/` | Architecture, decisions, state, Framer reference notes. |
+
+## Scripts
+
+| Command | Meaning |
+| --- | --- |
+| `npm run dev` | Start API and editor together. |
+| `npm run check` | Typecheck, unit tests, production builds. |
+| `npm test` | Unit tests (Vitest). |
+| `npm run build` | Build server and editor. |
+
+## Publishing
+
+Publishing is an adapter boundary, not a hosting product. The repository ships a
+static exporter that writes self-contained HTML/CSS/JS and assets, plus a zip
+artifact. Other targets implement `PublishAdapter`. See
+[`docs/PUBLISHING.md`](docs/PUBLISHING.md).
+
+## Framer reference material
+
+UI reference screenshots, extracted icons and computed-style notes live under
+`.reference/` and are not committed. Their provenance and redistribution caveat
+are recorded in [`docs/FRAMER-ASSETS.md`](docs/FRAMER-ASSETS.md). WebFM does not
+contain Framer source code.
+
+## License
+
+AGPL-3.0. See [`LICENSE`](LICENSE).

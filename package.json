@@ -1,0 +1,30 @@
+{
+  "name": "webfm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An open-source, Framer-familiar visual web design editor.",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "concurrently -k -n server,editor -c blue,green \"npm:dev:server\" \"npm:dev:editor\"",
+    "dev:server": "npm run dev -w @webfm/server",
+    "dev:editor": "npm run dev -w @webfm/editor",
+    "build": "npm run build -w @webfm/server && npm run build -w @webfm/editor",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false",
+    "lint": "biome check .",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.6",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "concurrently": "^10.0.6",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
