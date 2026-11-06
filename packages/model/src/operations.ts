@@ -740,6 +740,19 @@ export function setInstancePropertyValue(
   node.propertyValues[propertyId] = value;
 }
 
+/** Clears an instance override so the component property default applies again. */
+export function removeInstancePropertyValue(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  propertyId: PropertyId,
+): void {
+  const node = getTargetNodeOrThrow(draft, location, location.nodeId);
+  if (node.type !== "componentInstance") {
+    throw new Error(`Node "${location.nodeId}" is a ${node.type}; expected a component instance.`);
+  }
+  delete node.propertyValues[propertyId];
+}
+
 export function addComponentProperty(
   draft: Draft<Project>,
   options: { componentId: ComponentId; property: ComponentPropertyInput },

@@ -96,6 +96,20 @@ export function resolveComponentInstance(
     const node = findNode(root, binding.nodeId);
     if (!node) continue;
 
+    // Top-level node fields are not inside responsive.base.
+    if (binding.path === "visible") {
+      node.visible = Boolean(value);
+      continue;
+    }
+    if (binding.path === "locked") {
+      node.locked = Boolean(value);
+      continue;
+    }
+    if (binding.path === "name") {
+      node.name = String(value);
+      continue;
+    }
+
     // Bindings address resolved props, which live on the base responsive value.
     const props = node.responsive.base as unknown as Record<string, unknown>;
     setPath(props, binding.path, value);

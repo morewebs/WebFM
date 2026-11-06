@@ -365,7 +365,126 @@
 }
 
 .wfm-pp__variant-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ----------------------------------------------------- component properties */
+
+:root {
+  --wfm-component: #b06cff;
+  --wfm-component-soft: rgb(176 108 255 / 12%);
+}
+
+/* The component Properties accent is purple; the normal blue selection stays. */
+.wfm-pp__component-add,
+.wfm-pp__component-add:hover {
+  color: var(--wfm-component);
+}
+
+.wfm-pp__component-menu {
+  border-color: rgb(176 108 255 / 35%);
+}
+
+.wfm-pp__prop-empty {
+  display: block;
+  padding: 6px 8px;
+  color: var(--wfm-text-faint);
+  font-size: 11px;
+}
+
+.wfm-pp__property-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wfm-pp__property-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 4px 0 6px;
+  border-left: 2px solid var(--wfm-component);
+  border-radius: 4px;
+  background: var(--wfm-component-soft);
+}
+
+.wfm-pp__property-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wfm-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-pp__property-hint {
+  flex: none;
+  max-width: 96px;
+  overflow: hidden;
+  color: var(--wfm-text-faint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-pp__property-remove {
+  flex: none;
+  color: var(--wfm-component);
+}
+
+.wfm-pp__instance-property .wfm-row__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-pp__instance-property.is-overridden .wfm-row__label {
+  color: var(--wfm-component);
+}
+
+.wfm-pp__instance-property.is-overridden .wfm-field,
+.wfm-pp__instance-property.is-overridden .wfm-select,
+.wfm-pp__instance-property.is-overridden .wfm-style-value {
+  box-shadow: inset 0 0 0 1px rgb(176 108 255 / 45%);
+}
+
+.wfm-pp__property-reset {
+  flex: none;
+  color: var(--wfm-component);
+}
+
+.wfm-pp__property-number {
+  min-width: 60px;
+  text-align: right;
+}
+
+.wfm-pp__default-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid rgb(176 108 255 / 45%);
+  border-radius: 999px;
+  color: var(--wfm-component);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.wfm-pp__variant-default {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--wfm-text-dim);
+  font-size: 10px;
+}
+
+.wfm-pp__variant-default:hover {
+  background: var(--wfm-surface-hover);
+  color: var(--wfm-component);
 }

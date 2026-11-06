@@ -147,6 +147,36 @@ describe("resolveComponentInstance", () => {
     expect(html).not.toContain("Master label");
   });
 
+  it("binds a boolean property to node visibility", () => {
+    const { project, page } = createTestProject();
+    const component = cardComponent();
+    component.properties.push({
+      id: "prop_visible",
+      name: "Visible",
+      type: "boolean",
+      defaultValue: true,
+    });
+    component.bindings.push({
+      propertyId: "prop_visible",
+      nodeId: "node_label",
+      path: "visible",
+    });
+    project.components = [component];
+    const instance = createComponentInstance({
+      id: "node_instance",
+      componentId: "component_card",
+      propertyValues: { prop_visible: false },
+    });
+    page.root.children.push(instance);
+
+    const resolved = resolveComponentInstance(project, instance);
+    const label = findNode(resolved!.root, "node_label");
+    expect(label?.visible).toBe(false);
+    const html = renderPageToHtml(project, page, EDITOR);
+    expect(html).not.toContain("Master label");
+    expect(html).not.toContain("Default label");
+  });
+
   it("chooses the instance variant, then the default, then the first variant", () => {
     const { project } = createTestProject();
     const component = cardComponent();
