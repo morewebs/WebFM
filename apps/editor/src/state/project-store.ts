@@ -8,6 +8,7 @@
  */
 
 import {
+  addBreakpoint as addBreakpointOperation,
   addComponentVariant as addComponentVariantOperation,
   applyOperation,
   canRedo,
@@ -21,6 +22,7 @@ import {
   insertComponentInstance as insertComponentInstanceOperation,
   insertNode as insertNodeOperation,
   isSelfOrDescendant,
+  removeBreakpoint as removeBreakpointOperation,
   renameComponent as renameComponentOperation,
   renameComponentVariant as renameComponentVariantOperation,
   setInstanceVariant as setInstanceVariantOperation,
@@ -116,6 +118,8 @@ export interface ProjectStoreState {
   closeProject(): void;
   setActivePage(pageId: PageId): void;
   setActiveBreakpoint(breakpointId: BreakpointId): void;
+  addBreakpoint(name: string, width: number): BreakpointId | null;
+  removeBreakpoint(breakpointId: BreakpointId): void;
   select(nodeId: NodeId, additive?: boolean): void;
   selectMany(nodeIds: NodeId[]): void;
   clearSelection(): void;
@@ -555,6 +559,31 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
           return;
         }
         set({ activeBreakpointId: breakpointId });
+      },
+
+      addBreakpoint(name, width) {
+        const breakpointId = applyRecipeWithResult("Add breakpoint", (draft) =>
+          addBreakpointOperation(draft, { name, width }),
+        );
+        if (breakpointId === null) return null;
+        set({ activeBreakpointId: breakpointId });
+        return breakpointId;
+      },
+
+      removeBreakpoint(breakpointId) {
+        applyRecipe("Remove breakpoint", (draft) => {
+          removeBreakpointOperation(draft, breakpointId);
+        });
+        const state = get();
+        if (!state.project) return;
+        // A failed removal (primary, missing) leaves the active breakpoint valid;
+        // a successful removal of the active one falls back to the primary.
+        const activeStillExists = state.project.breakpoints.some(
+          (breakpoint) => breakpoint.id === state.activeBreakpointId,
+        );
+        if (!activeStillExists) {
+          set({ activeBreakpointId: state.project.breakpoints[0]?.id ?? "" });
+        }
       },
 
       select(nodeId, additive = false) {

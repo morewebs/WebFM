@@ -2,10 +2,13 @@ import { type Draft, produce } from "immer";
 import { describe, expect, it } from "vitest";
 import { createFrame, createImage, createProject, createText, resolveNodeProps } from "./defaults";
 import {
+  addBreakpoint,
   addPage,
+  createComponentFromNode,
   duplicateNode,
   insertNode,
   moveNode,
+  removeBreakpoint,
   removeNode,
   removePage,
   renameNode,
@@ -20,7 +23,7 @@ import {
   updateTextProps,
 } from "./operations";
 import { collectNodes, findNode } from "./tree";
-import type { FrameNode, Project, SceneNode } from "./types";
+import type { ComponentVariant, FrameNode, Project, SceneNode } from "./types";
 
 /** Runs a recipe against a draft and returns both the next project and its result. */
 function run<T>(
@@ -58,6 +61,50 @@ function addToRoot(base: Project, nodes: SceneNode[]): Project {
       insertNode(draft, { pageId, parentId: rootId, node });
     }
   }).project;
+}
+
+/** A project with one page and one component created from a card on it. */
+function componentFixture(): {
+  project: Project;
+  pageId: string;
+  rootId: string;
+  instanceId: string;
+  componentId: string;
+  variantId: string;
+} {
+  const base = createProject();
+  const { pageId, rootId } = ids(base);
+  const seeded = run(base, (draft) => {
+    insertNode(draft, {
+      pageId,
+      parentId: rootId,
+      node: createFrame({ id: "card", name: "Card" }),
+    });
+    insertNode(draft, {
+      pageId,
+      parentId: "card",
+      node: createText({ id: "card_label", content: "Label" }),
+    });
+  }).project;
+  const created = run(seeded, (draft) =>
+    createComponentFromNode(draft, { pageId, nodeId: "card", name: "Card" }),
+  );
+  if (!created.result) throw new Error("Component was not created.");
+  return {
+    project: created.project,
+    pageId,
+    rootId,
+    instanceId: created.result.instanceId,
+    componentId: created.result.componentId,
+    variantId: created.result.variantId,
+  };
+}
+
+function variantOf(project: Project, componentId: string, variantId: string): ComponentVariant {
+  const component = project.components.find((candidate) => candidate.id === componentId);
+  const variant = component?.variants.find((candidate) => candidate.id === variantId);
+  if (!variant) throw new Error(`Missing variant ${variantId}.`);
+  return variant;
 }
 
 describe("insertNode", () => {
@@ -489,6 +536,172 @@ describe("node metadata", () => {
     expect(card.name).toBe("Hero Section");
     expect(card.visible).toBe(false);
     expect(card.locked).toBe(true);
+  });
+});
+
+describe("breakpoints", () => {
+  it("inserts widest to narrowest, keeping equal widths after existing ones", () => {
+    const base = createProject();
+    const { project } = run(base, (draft) => {
+      addBreakpoint(draft, { name: "Wide", width: 1100 });
+      addBreakpoint(draft, { name: "Tablet 2", width: 810 });
+      addBreakpoint(draft, { name: "Equal", width: 810 });
+      addBreakpoint(draft, { name: "Small", width: 320 });
+    });
+
+    expect(project.breakpoints.map((breakpoint) => breakpoint.name)).toEqual([
+      "Desktop",
+      "Wide",
+      "Tablet",
+      "Tablet 2",
+      "Equal",
+      "Phone",
+      "Small",
+    ]);
+    expect(project.breakpoints.map((breakpoint) => breakpoint.width)).toEqual([
+      1200, 1100, 810, 810, 810, 390, 320,
+    ]);
+  });
+
+  it("trims the name, generates an id and rejects invalid input", () => {
+    const base = createProject();
+    const { project, result } = run(base, (draft) =>
+      addBreakpoint(draft, { name: "  Watch  ", width: 320 }),
+    );
+    const added = project.breakpoints.find((breakpoint) => breakpoint.id === result);
+    expect(result.startsWith("bp_")).toBe(true);
+    expect(added).toMatchObject({ name: "Watch", width: 320 });
+
+    expect(() => run(base, (draft) => addBreakpoint(draft, { name: "", width: 500 }))).toThrow(
+      /name cannot be empty/,
+    );
+    expect(() => run(base, (draft) => addBreakpoint(draft, { name: "Narrow", width: 0 }))).toThrow(
+      /whole number from 1 to 10000/,
+    );
+    expect(() =>
+      run(base, (draft) => addBreakpoint(draft, { name: "Narrow", width: 12.5 })),
+    ).toThrow(/whole number from 1 to 10000/);
+    expect(() =>
+      run(base, (draft) => addBreakpoint(draft, { name: "Equal primary", width: 1200 })),
+    ).toThrow(/narrower than the primary breakpoint/);
+    expect(() =>
+      run(base, (draft) => addBreakpoint(draft, { name: "Wider", width: 1440 })),
+    ).toThrow(/narrower than the primary breakpoint/);
+    expect(() => run(base, (draft) => addBreakpoint(draft, { name: "Desktop", width: 500 }))).toThrow(
+      /already exists/,
+    );
+    expect(() =>
+      run(base, (draft) =>
+        addBreakpoint(draft, { name: "Narrow", width: 500, id: "bp_desktop" }),
+      ),
+    ).toThrow(/id "bp_desktop" is already used/);
+  });
+
+  it("gives every page root the new width but leaves component roots alone", () => {
+    const fixture = componentFixture();
+    const withSecondPage = run(fixture.project, (draft) =>
+      addPage(draft, { name: "About", path: "/about" }),
+    ).project;
+    const variant = variantOf(withSecondPage, fixture.componentId, fixture.variantId);
+    const componentOverridesBefore = Object.keys(variant.root.responsive.overrides);
+
+    const { project, result } = run(withSecondPage, (draft) =>
+      addBreakpoint(draft, { name: "Watch", width: 320 }),
+    );
+
+    expect(project.pages).toHaveLength(2);
+    for (const page of project.pages) {
+      expect(page.root.responsive.overrides[result]?.size?.width).toEqual({
+        mode: "fixed",
+        value: 320,
+      });
+    }
+
+    const after = variantOf(project, fixture.componentId, fixture.variantId);
+    expect(after.root.responsive.overrides[result]).toBeUndefined();
+    expect(Object.keys(after.root.responsive.overrides)).toEqual(componentOverridesBefore);
+  });
+
+  it("removes overrides from every page and component variant node", () => {
+    const fixture = componentFixture();
+    const variant = variantOf(fixture.project, fixture.componentId, fixture.variantId);
+    const variantChildId = variant.root.children[0]?.id;
+    if (!variantChildId) throw new Error("Expected the variant root to have a child.");
+
+    const seeded = run(fixture.project, (draft) => {
+      const pageTarget = { pageId: fixture.pageId };
+      updateBoxProps(draft, {
+        ...pageTarget,
+        nodeId: fixture.rootId,
+        breakpointId: "bp_phone",
+        patch: { position: { x: 10 } },
+      });
+      updateBoxProps(draft, {
+        ...pageTarget,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_phone",
+        patch: { position: { x: 20 } },
+      });
+      const variantTarget = { componentId: fixture.componentId, variantId: fixture.variantId };
+      updateBoxProps(draft, {
+        ...variantTarget,
+        nodeId: variant.root.id,
+        breakpointId: "bp_phone",
+        patch: { position: { x: 4 } },
+      });
+      updateBoxProps(draft, {
+        ...variantTarget,
+        nodeId: variantChildId,
+        breakpointId: "bp_phone",
+        patch: { position: { x: 2 } },
+      });
+      updateBoxProps(draft, {
+        ...variantTarget,
+        nodeId: variant.root.id,
+        breakpointId: "bp_tablet",
+        patch: { position: { x: 1 } },
+      });
+    }).project;
+
+    const { project } = run(seeded, (draft) => removeBreakpoint(draft, "bp_phone"));
+
+    expect(project.breakpoints.some((breakpoint) => breakpoint.id === "bp_phone")).toBe(false);
+
+    const allNodes = [
+      ...project.pages.flatMap((page) => collectNodes(page.root)),
+      ...project.components.flatMap((component) =>
+        component.variants.flatMap((entry) => collectNodes(entry.root)),
+      ),
+    ];
+    for (const node of allNodes) {
+      expect(node.responsive.overrides.bp_phone).toBeUndefined();
+    }
+
+    // Other breakpoints keep their overrides.
+    const after = variantOf(project, fixture.componentId, fixture.variantId);
+    expect(after.root.responsive.overrides.bp_tablet).toBeDefined();
+  });
+
+  it("refuses to remove a missing, primary or last breakpoint", () => {
+    const base = createProject();
+    expect(() => run(base, (draft) => removeBreakpoint(draft, "bp_watch"))).toThrow(/not found/);
+    expect(() => run(base, (draft) => removeBreakpoint(draft, "bp_desktop"))).toThrow(/primary/);
+
+    const single = createProject({
+      breakpoints: [{ id: "bp_only", name: "Only", width: 1200 }],
+    });
+    expect(() => run(single, (draft) => removeBreakpoint(draft, "bp_only"))).toThrow(/last/);
+  });
+
+  it("round-trips add and remove", () => {
+    const base = createProject();
+    const added = run(base, (draft) => addBreakpoint(draft, { name: "Watch", width: 320 }));
+    const id = added.result;
+    expect(added.project.pages[0]!.root.responsive.overrides[id]).toBeDefined();
+
+    const removed = run(added.project, (draft) => removeBreakpoint(draft, id));
+    expect(removed.project.breakpoints).toEqual(base.breakpoints);
+    expect(removed.project.pages[0]!.root.responsive.overrides[id]).toBeUndefined();
   });
 });
 

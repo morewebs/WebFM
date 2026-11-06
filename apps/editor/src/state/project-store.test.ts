@@ -161,6 +161,86 @@ describe("project store", () => {
     expect(frame.responsive.overrides.bp_phone?.size?.width?.value).toBe(100);
   });
 
+  it("adds a breakpoint, makes it active and gives the page root its width", async () => {
+    const { project, rootId, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+    store.getState().select(childId);
+
+    const breakpointId = store.getState().addBreakpoint("Watch", 320);
+
+    expect(breakpointId).not.toBeNull();
+    const state = store.getState();
+    expect(state.activeBreakpointId).toBe(breakpointId);
+    expect(
+      state.project?.breakpoints.find((breakpoint) => breakpoint.id === breakpointId),
+    ).toMatchObject({ name: "Watch", width: 320 });
+    expect(frameAt(state.project, rootId).responsive.overrides[breakpointId!]?.size?.width).toEqual(
+      { mode: "fixed", value: 320 },
+    );
+    // Breakpoints do not change nodes, so the selection survives.
+    expect(state.selection).toEqual([childId]);
+    expect(state.dirty).toBe(true);
+    expect(state.history?.past).toHaveLength(1);
+  });
+
+  it("returns null and leaves state alone when a breakpoint is invalid", async () => {
+    const { project } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+    const before = store.getState().project;
+    const activeBefore = store.getState().activeBreakpointId;
+
+    const breakpointId = store.getState().addBreakpoint("Desktop", 500);
+
+    expect(breakpointId).toBeNull();
+    const state = store.getState();
+    expect(state.project?.breakpoints).toEqual(before?.breakpoints);
+    expect(state.activeBreakpointId).toBe(activeBefore);
+    expect(state.error).toMatch(/already exists/);
+    expect(state.history?.past).toHaveLength(0);
+    expect(state.dirty).toBe(false);
+  });
+
+  it("falls back to Desktop when the active breakpoint is removed", async () => {
+    const { project, rootId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const breakpointId = store.getState().addBreakpoint("Watch", 320)!;
+    expect(store.getState().activeBreakpointId).toBe(breakpointId);
+
+    store.getState().removeBreakpoint(breakpointId);
+
+    const state = store.getState();
+    expect(state.activeBreakpointId).toBe(project.breakpoints[0]?.id);
+    expect(
+      state.project?.breakpoints.some((breakpoint) => breakpoint.id === breakpointId),
+    ).toBe(false);
+    expect(frameAt(state.project, rootId).responsive.overrides[breakpointId]).toBeUndefined();
+  });
+
+  it("keeps the state unchanged when the primary breakpoint cannot be removed", async () => {
+    const { project } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+    const before = store.getState().project;
+    const primaryId = project.breakpoints[0]!.id;
+
+    store.getState().removeBreakpoint(primaryId);
+
+    const state = store.getState();
+    expect(state.project?.breakpoints).toEqual(before?.breakpoints);
+    expect(state.activeBreakpointId).toBe(primaryId);
+    expect(state.project?.breakpoints.some((breakpoint) => breakpoint.id === primaryId)).toBe(true);
+    expect(state.error).toMatch(/primary/);
+    expect(state.history?.past).toHaveLength(0);
+  });
+
   it("autosaves once after the 600 ms debounce", async () => {
     const { project, childId } = fixture();
     const { api, saveProject } = makeApi(project);
