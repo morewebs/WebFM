@@ -1,0 +1,21 @@
+{
+  "name": "@webfm/editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "@webfm/model": "0.1.0",
+    "@webfm/render": "0.1.0",
+    "immer": "^11.2.9",
+    "nanoid": "^6.0.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": { "@vitejs/plugin-react": "^6.2.1", "vite": "^8.3.6" }
+}

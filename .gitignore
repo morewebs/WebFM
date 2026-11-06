@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.webfm-data/
+.reference/
+.scratch/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
