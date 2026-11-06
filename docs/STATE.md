@@ -6,9 +6,8 @@ Living record. Update after every integrated milestone. Dates are absolute.
 
 ## Current milestone
 
-The core editor is built and browser-verified. The component slice (create,
-instances, component edit mode, variants) is built and browser-verified.
-Property controls are the next sub-slice.
+The core editor and the component slice are built and browser-verified,
+including component property controls. Interactions are the next slice.
 
 ## Areas
 
@@ -24,7 +23,7 @@ Property controls are the next sub-slice.
 | Canvas | done | Select, move, resize, text edit, draw tools, zoom/pan, breakpoint bar states, component stage and bar. |
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides verified; add/remove not built. |
-| Components | done (core) | Create from layer, instances, edit master, variants, defaults/bindings in the model+renderer. Property-control UI next. |
+| Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
 | Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
 | Manual verification | done for core+components | See verified list below. |
@@ -45,6 +44,11 @@ Property controls are the next sub-slice.
   selects the instance; Add variant; instance variant switch changes rendered
   content; second instance inserted from Assets; publish renders both instances
   with their variant content.
+- Property controls: added Text content + Visible bindings in component edit
+  mode; instance inspector rendered the text field and switch; the text
+  override changed only one instance; the switch hid the instance's text; reset
+  returned to the default; Set default variant moved the DEFAULT badge; publish
+  contained the overridden and default instance content.
 
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
@@ -53,11 +57,11 @@ Property controls are the next sub-slice.
 
 ## Next
 
-1. Property controls: add/expose/bind in component edit mode; instance controls;
-   purple override state; default-variant action.
-2. Interactions (appear/scroll/hover/tap) after components.
-3. Code components, then CMS.
-4. Add/remove custom breakpoints; alignment actions; text auto-rename.
+1. Interactions (appear/scroll/hover/tap) after components.
+2. Code components, then CMS.
+3. Add/remove custom breakpoints; alignment actions; text auto-rename.
+4. Instance style overrides; per-variant property defaults; publish class
+   scoping for component variants.
 5. Cloud/auth design discussion (deferred).
 
 ## Known limits
@@ -66,8 +70,10 @@ Property controls are the next sub-slice.
   per-instance class scoping is a follow-up (editor is unaffected).
 - Component create/insert is page-only; nested component creation from the UI is
   disabled.
-- Instances inherit master layout/typography/style; only position and size are
-  instance-owned until overrides land.
+- Instances inherit master layout/typography/style; position, size and component
+  property values are instance-owned. Style overrides (fill/border/radius/shadow)
+  are next.
+- Component property defaults are component-wide; per-variant defaults are next.
 - Page background editing is not exposed in the no-selection panel (matches
   Framer's Typography/Template panel).
 - Text layers do not auto-rename with content.

@@ -92,27 +92,37 @@ type NodeLocation = SceneTarget & { nodeId: NodeId };
   not created or inserted from the UI yet. Instances can still contain
   components that existed in the copied tree.
 - Instances inherit the master's layout, typography and style; only position and
-  size are instance-owned. Style/content overrides are the next slice.
+  size are instance-owned. Content overrides work through property controls;
+  style overrides (fill, border, radius, …) are the next slice.
+- Component property defaults are component-wide. A property added while
+  editing a variant captures that variant's value and applies it to every
+  variant unless an instance overrides it. Per-variant defaults are a follow-up.
 
-## Next: property controls (not built)
+## Property controls (built)
 
-The model and renderer already support component properties and bindings. The
-next sub-slice should add:
-
-- In component edit mode, a **Properties** section under the Style panel with a
-  `+` menu: Text, Boolean, Color, Number, Enum. Each property has a name, a
-  default value, and one binding to the selected node's prop (`text.content`,
-  `text.color`, `visible`, `text.fontSize`, etc.).
-- In the instance inspector, one control per component property (text field,
-  switch, color picker, number field, select), writing
-  `setInstancePropertyValue`.
-- Purple override styling for instance values that differ from the default.
-- A default-variant action in the component panel.
+- In component edit mode, selecting a node shows a purple **Properties** section
+  with a `+` menu. Options depend on the node:
+  - Text: **Text content**, **Text color**, **Font size**.
+  - Image: **Alt text**.
+  - Any node: **Visible**, **Opacity**.
+- Adding one runs `addComponentProperty` + `setComponentBinding` in a single
+  history entry. Rows show the name, `type · path` hint, and a remove ×.
+- The instance inspector shows a **Properties** section with one control per
+  property: text field, color picker + hex, number field, switch, or select for
+  enum/variant properties.
+- Overridden values are purple and carry a reset ×; reset removes the override
+  so the component default applies again.
+- The component panel marks the default variant and offers **Set default** on the
+  others.
+- The renderer applies defaults and bindings, including top-level
+  `visible`/`locked`/`name` paths; published output reflects instance values.
 
 ## Out of scope for this slice
 
-- Property-control **UI** (add/remove/bind controls) — model-level only.
-- Component variables, code overrides, effects, slots.
+- Enum property creation UI (the model and instance select support enums).
+- Per-variant property defaults and component variables beyond text/boolean/
+  color/number/enum.
+- Instance style overrides (fill, border, radius, shadow).
 - Creating a component from an instance of another component (nested master).
 - Deleting components that have instances (the model refuses).
 - Component-specific breakpoints; the project breakpoints apply.

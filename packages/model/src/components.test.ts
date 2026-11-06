@@ -15,6 +15,7 @@ import {
   insertNode,
   moveNode,
   removeComponentProperty,
+  removeInstancePropertyValue,
   removeNode,
   renameComponent,
   renameComponentVariant,
@@ -827,6 +828,47 @@ describe("component properties and bindings", () => {
         }),
       ),
     ).toThrow(/Property "missing" was not found/);
+  });
+
+  it("clears an instance override so the property default applies again", () => {
+    const created = createFrom(seeded(), "card");
+    const label = findTextByContent(created.variantRoot, "Hello");
+    const withProperty = run(created.project, (draft) =>
+      addComponentProperty(draft, {
+        componentId: created.componentId,
+        property: { name: "Label", type: "text", defaultValue: "Hi", control: "text" },
+      }),
+    );
+    const propertyId = withProperty.result;
+    const prepared = run(withProperty.project, (draft) =>
+      setComponentBinding(draft, {
+        componentId: created.componentId,
+        binding: { propertyId, nodeId: label.id, path: "text.content" },
+      }),
+    ).project;
+
+    const withValue = run(prepared, (draft) =>
+      setInstancePropertyValue(
+        draft,
+        { pageId: created.pageId, nodeId: created.instanceId },
+        propertyId,
+        "Custom",
+      ),
+    ).project;
+    expect(
+      asInstance(findNode(withValue.pages[0]!.root, created.instanceId)).propertyValues[propertyId],
+    ).toBe("Custom");
+
+    const cleared = run(withValue, (draft) =>
+      removeInstancePropertyValue(
+        draft,
+        { pageId: created.pageId, nodeId: created.instanceId },
+        propertyId,
+      ),
+    ).project;
+    expect(
+      asInstance(findNode(cleared.pages[0]!.root, created.instanceId)).propertyValues[propertyId],
+    ).toBeUndefined();
   });
 });
 

@@ -9,12 +9,16 @@
  */
 
 import {
+  addComponentProperty,
   type Border,
   type BoxProps,
   type Breakpoint,
   type BreakpointId,
   type ComponentDefinition,
   type ComponentInstanceNode,
+  type ComponentProperty,
+  type ComponentPropertyInput,
+  type ComponentPropertyValue,
   type ComponentVariant,
   type DeepPartial,
   type Fill,
@@ -25,13 +29,20 @@ import {
   type LayoutProps,
   type NodeId,
   type Project,
+  type PropertyBinding,
+  removeComponentProperty,
+  removeInstancePropertyValue,
   resolveNodeProps,
   type SceneNode,
+  type SceneTarget,
   type Shadow,
   type SizeMode,
   type SizeProps,
   type SizeValue,
   type StyleProps,
+  setComponentBinding,
+  setComponentDefaultVariant,
+  setInstancePropertyValue,
   type TextAlign,
   type TextProps,
   type VariantId,
@@ -174,6 +185,108 @@ function withCurrent<T>(options: readonly T[], current: T): T[] {
 
 function numericSize(size: SizeValue): number | null {
   return size.mode === "fixed" || size.mode === "relative" ? (size.value ?? 0) : null;
+}
+
+/* ---------------------------------------------------------- component props */
+
+/**
+ * One entry in the component Properties "+" menu. The name doubles as the new
+ * property's name, matching the label the designer picked.
+ */
+interface ComponentPropertyOption {
+  name: string;
+  type: "text" | "color" | "number" | "boolean";
+  path: string;
+  defaultValue: string | number | boolean;
+  control?: "text" | "textarea";
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+/** Properties that make sense for the node kind being edited in the master. */
+function componentPropertyOptions(
+  node: SceneNode,
+  box: BoxProps,
+  text: TextProps["text"] | null,
+  image: ImageProps["image"] | null,
+): ComponentPropertyOption[] {
+  const options: ComponentPropertyOption[] = [];
+
+  if (node.type === "text" && text) {
+    options.push(
+      {
+        name: "Text content",
+        type: "text",
+        path: "text.content",
+        defaultValue: text.content,
+        control: "text",
+      },
+      { name: "Text color", type: "color", path: "text.color", defaultValue: text.color },
+      {
+        name: "Font size",
+        type: "number",
+        path: "text.fontSize",
+        defaultValue: text.fontSize,
+        min: 1,
+      },
+    );
+  }
+
+  if (node.type === "image" && image) {
+    options.push({
+      name: "Alt text",
+      type: "text",
+      path: "image.alt",
+      defaultValue: image.alt,
+      control: "text",
+    });
+  }
+
+  options.push(
+    { name: "Visible", type: "boolean", path: "visible", defaultValue: node.visible },
+    {
+      name: "Opacity",
+      type: "number",
+      path: "style.opacity",
+      defaultValue: box.style.opacity,
+      min: 0,
+      max: 1,
+      step: 0.05,
+    },
+  );
+
+  return options;
+}
+
+/** Shapes a menu choice into the model's discriminated property input union. */
+function componentPropertyInput(option: ComponentPropertyOption): ComponentPropertyInput {
+  switch (option.type) {
+    case "boolean":
+      return {
+        name: option.name,
+        type: "boolean",
+        defaultValue: Boolean(option.defaultValue),
+      };
+    case "text":
+      return {
+        name: option.name,
+        type: "text",
+        defaultValue: String(option.defaultValue),
+        control: option.control ?? "text",
+      };
+    case "color":
+      return { name: option.name, type: "color", defaultValue: String(option.defaultValue) };
+    case "number":
+      return {
+        name: option.name,
+        type: "number",
+        defaultValue: Number(option.defaultValue),
+        ...(option.min !== undefined ? { min: option.min } : {}),
+        ...(option.max !== undefined ? { max: option.max } : {}),
+        ...(option.step !== undefined ? { step: option.step } : {}),
+      };
+  }
 }
 
 /* ----------------------------------------------------------------- sections */
@@ -1535,6 +1648,372 @@ function PageDefaultsPanel() {
 
 /* -------------------------------------------------------------- components */
 
+interface ComponentPropertyMenuProps {
+  options: ComponentPropertyOption[];
+  onAdd: (option: ComponentPropertyOption) => void;
+}
+
+/** The purple "+" menu that adds a property and binds it to the selected node. */
+function ComponentPropertyMenu({ options, onAdd }: ComponentPropertyMenuProps) {
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        wrapper.current &&
+        event.target instanceof Node &&
+        !wrapper.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <span className="wfm-pp__menu-wrap" ref={wrapper}>
+      <button
+        type="button"
+        className="wfm-section__add wfm-pp__component-add"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Add property"
+        title="Add property"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="plus" size={14} />
+      </button>
+      {open ? (
+        <div className="wfm-pp__prop-menu wfm-pp__component-menu" role="menu">
+          {options.length === 0 ? (
+            <span className="wfm-pp__prop-empty">No more properties for this layer</span>
+          ) : (
+            options.map((option) => (
+              <button
+                key={option.path}
+                type="button"
+                role="menuitem"
+                className="wfm-pp__prop-item"
+                onClick={() => {
+                  onAdd(option);
+                  setOpen(false);
+                }}
+              >
+                {option.name}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+interface ComponentPropertiesSectionProps {
+  component: ComponentDefinition;
+  node: SceneNode;
+  project: Project;
+  breakpointId: BreakpointId;
+}
+
+/**
+ * Properties bound to the selected node while editing a component master.
+ * Adding a property runs one history recipe that creates it and binds it.
+ */
+function ComponentPropertiesSection({
+  component,
+  node,
+  project,
+  breakpointId,
+}: ComponentPropertiesSectionProps) {
+  const applyRecipe = useProjectStore((state) => state.applyRecipe);
+
+  const box = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints);
+  const text =
+    node.type === "text"
+      ? resolveNodeProps<BoxProps & TextProps>(node, breakpointId, project.breakpoints).text
+      : null;
+  const image =
+    node.type === "image"
+      ? resolveNodeProps<BoxProps & ImageProps>(node, breakpointId, project.breakpoints).image
+      : null;
+
+  const rows = component.bindings
+    .filter((binding) => binding.nodeId === node.id)
+    .map((binding) => ({
+      binding,
+      property: component.properties.find((property) => property.id === binding.propertyId) ?? null,
+    }))
+    .filter(
+      (row): row is { binding: PropertyBinding; property: ComponentProperty } =>
+        row.property !== null,
+    );
+
+  // The model forbids duplicate property names; hide options already taken.
+  const options = componentPropertyOptions(node, box, text, image).filter(
+    (option) => !component.properties.some((property) => property.name === option.name),
+  );
+
+  const addProperty = (option: ComponentPropertyOption) => {
+    applyRecipe("Add component property", (draft) => {
+      const propertyId = addComponentProperty(draft, {
+        componentId: component.id,
+        property: componentPropertyInput(option),
+      });
+      setComponentBinding(draft, {
+        componentId: component.id,
+        binding: { propertyId, nodeId: node.id, path: option.path },
+      });
+    });
+  };
+
+  const removeProperty = (propertyId: string) => {
+    applyRecipe("Remove component property", (draft) => {
+      removeComponentProperty(draft, { componentId: component.id, propertyId });
+    });
+  };
+
+  return (
+    <Section
+      title="Properties"
+      add={<ComponentPropertyMenu options={options} onAdd={addProperty} />}
+    >
+      {rows.length === 0 ? (
+        <p className="wfm-pp__note">No properties bound to this layer.</p>
+      ) : (
+        <div className="wfm-pp__property-list">
+          {rows.map(({ binding, property }) => (
+            <div key={property.id} className="wfm-pp__property-row">
+              <span className="wfm-pp__property-name" title={property.name}>
+                {property.name}
+              </span>
+              <span className="wfm-pp__property-hint">
+                {property.type} · {binding.path}
+              </span>
+              <button
+                type="button"
+                className="wfm-remove wfm-pp__property-remove"
+                title="Remove property"
+                aria-label={`Remove ${property.name}`}
+                onClick={() => removeProperty(property.id)}
+              >
+                <Icon name="close" size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+interface InstanceNumberFieldProps {
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  ariaLabel: string;
+  onChange: (value: number) => void;
+}
+
+/** A number control that keeps intermediate keystrokes local to the input. */
+function InstanceNumberField({
+  value,
+  min,
+  max,
+  step,
+  ariaLabel,
+  onChange,
+}: InstanceNumberFieldProps) {
+  const [draft, setDraft] = useState(() => String(value));
+  const focused = useRef(false);
+
+  useEffect(() => {
+    if (!focused.current) setDraft(String(value));
+  }, [value]);
+
+  return (
+    <input
+      type="number"
+      className="wfm-field wfm-row__grow wfm-pp__property-number"
+      value={draft}
+      min={min}
+      max={max}
+      step={step}
+      aria-label={ariaLabel}
+      onFocus={() => {
+        focused.current = true;
+      }}
+      onChange={(event) => {
+        const raw = event.target.value;
+        setDraft(raw);
+        const parsed = Number.parseFloat(raw);
+        if (!Number.isFinite(parsed)) return;
+        const next = clampNumber(parsed, min, max);
+        if (next !== value) onChange(next);
+      }}
+      onBlur={() => {
+        focused.current = false;
+        setDraft(String(value));
+      }}
+    />
+  );
+}
+
+interface InstancePropertyRowProps {
+  component: ComponentDefinition;
+  node: ComponentInstanceNode;
+  property: ComponentProperty;
+  target: SceneTarget;
+}
+
+/**
+ * One instance value control. Writes never touch the project directly: they
+ * pass through applyRecipe against the active scene target, and text/number
+ * keystrokes coalesce into a single undo entry per instance/property.
+ */
+function InstancePropertyRow({ component, node, property, target }: InstancePropertyRowProps) {
+  const applyRecipe = useProjectStore((state) => state.applyRecipe);
+  const overridden = Object.hasOwn(node.propertyValues, property.id);
+  const value = node.propertyValues[property.id] ?? property.defaultValue;
+  const coalesceKey = `wfm-instance-property:${node.id}:${property.id}`;
+
+  const write = (next: ComponentPropertyValue, coalesce = false) => {
+    applyRecipe(
+      "Update instance property",
+      (draft) => {
+        setInstancePropertyValue(draft, { ...target, nodeId: node.id }, property.id, next);
+      },
+      coalesce ? coalesceKey : undefined,
+    );
+  };
+
+  const reset = () => {
+    applyRecipe("Reset instance property", (draft) => {
+      removeInstancePropertyValue(draft, { ...target, nodeId: node.id }, property.id);
+    });
+  };
+
+  let control: ReactNode;
+  switch (property.type) {
+    case "text":
+      control = (
+        <input
+          type="text"
+          className="wfm-field wfm-row__grow"
+          value={String(value)}
+          aria-label={property.name}
+          onChange={(event) => write(event.target.value, true)}
+        />
+      );
+      break;
+    case "number":
+      control = (
+        <InstanceNumberField
+          value={Number(value)}
+          min={property.min}
+          max={property.max}
+          step={property.step}
+          ariaLabel={property.name}
+          onChange={(next) => write(next, true)}
+        />
+      );
+      break;
+    case "boolean":
+      control = (
+        <button
+          type="button"
+          className={`wfm-pp__switch${value ? " is-on" : ""}`}
+          aria-pressed={Boolean(value)}
+          aria-label={property.name}
+          title={property.name}
+          onClick={() => write(!value)}
+        />
+      );
+      break;
+    case "color":
+      control = (
+        <span className="wfm-style-value">
+          <input
+            type="color"
+            className="wfm-pp__swatch"
+            value={colorInputValue(String(value))}
+            aria-label={`${property.name} color`}
+            onChange={(event) => write(event.target.value, true)}
+          />
+          <HexField
+            color={String(value)}
+            onCommit={(color) => write(color)}
+            ariaLabel={`${property.name} hex`}
+          />
+        </span>
+      );
+      break;
+    case "enum":
+      control = (
+        <select
+          className="wfm-select wfm-row__grow"
+          value={String(value)}
+          aria-label={property.name}
+          onChange={(event) => write(event.target.value)}
+        >
+          {withCurrent(property.options, String(value)).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+      break;
+    case "variant":
+      control = (
+        <select
+          className="wfm-select wfm-row__grow"
+          value={String(value)}
+          aria-label={property.name}
+          onChange={(event) => write(event.target.value)}
+        >
+          {component.variants.map((variant) => (
+            <option key={variant.id} value={variant.id}>
+              {variant.name}
+            </option>
+          ))}
+        </select>
+      );
+      break;
+  }
+
+  return (
+    <div className={`wfm-row wfm-pp__instance-property${overridden ? " is-overridden" : ""}`}>
+      <span className="wfm-row__label" title={property.name}>
+        {property.name}
+      </span>
+      {control}
+      {overridden ? (
+        <button
+          type="button"
+          className="wfm-remove wfm-pp__property-reset"
+          title="Reset to default"
+          aria-label={`Reset ${property.name} to default`}
+          onClick={reset}
+        >
+          <Icon name="close" size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Inspector for a selected component instance. An instance inherits its
  * master's appearance, so only placement and the variant choice are editable
@@ -1544,9 +2023,10 @@ interface InstanceInspectorProps {
   node: ComponentInstanceNode;
   project: Project;
   breakpointId: BreakpointId;
+  target: SceneTarget;
 }
 
-function InstanceInspector({ node, project, breakpointId }: InstanceInspectorProps) {
+function InstanceInspector({ node, project, breakpointId, target }: InstanceInspectorProps) {
   const setInstanceVariant = useProjectStore((state) => state.setInstanceVariant);
   const enterComponent = useProjectStore((state) => state.enterComponent);
 
@@ -1599,6 +2079,19 @@ function InstanceInspector({ node, project, breakpointId }: InstanceInspectorPro
       </Section>
       <Section title="Template" placeholder />
       <BreakpointSection nodeId={node.id} box={box} />
+      {component && component.properties.length > 0 ? (
+        <Section title="Properties" showAdd={false}>
+          {component.properties.map((property) => (
+            <InstancePropertyRow
+              key={property.id}
+              component={component}
+              node={node}
+              property={property}
+              target={target}
+            />
+          ))}
+        </Section>
+      ) : null}
       <Section title="Overrides">
         <p className="wfm-pp__note">Style and content overrides on instances are the next slice.</p>
       </Section>
@@ -1619,7 +2112,14 @@ interface ComponentModePanelProps {
 function ComponentModePanel({ component, variant, project }: ComponentModePanelProps) {
   const setEditingVariant = useProjectStore((state) => state.setEditingVariant);
   const addComponentVariant = useProjectStore((state) => state.addComponentVariant);
+  const applyRecipe = useProjectStore((state) => state.applyRecipe);
   const instanceCount = findComponentInstances(project, component.id).length;
+
+  const setDefaultVariant = (variantId: VariantId) => {
+    applyRecipe("Set default variant", (draft) => {
+      setComponentDefaultVariant(draft, { componentId: component.id, variantId });
+    });
+  };
 
   return (
     <Section title="Component">
@@ -1661,6 +2161,18 @@ function ComponentModePanel({ component, variant, project }: ComponentModePanelP
           >
             <span className="wfm-pp__variant-dot" aria-hidden="true" />
             <span className="wfm-pp__variant-name">{candidate.name}</span>
+            {candidate.id === component.defaultVariantId ? (
+              <span className="wfm-pp__default-badge">Default</span>
+            ) : (
+              <button
+                type="button"
+                className="wfm-pp__variant-default"
+                title={`Set ${candidate.name} as the default variant`}
+                onClick={() => setDefaultVariant(candidate.id)}
+              >
+                Set default
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -1684,9 +2196,10 @@ interface NodeInspectorProps {
   node: SceneNode;
   project: Project;
   breakpointId: BreakpointId;
+  component: ComponentDefinition | null;
 }
 
-function NodeInspector({ node, project, breakpointId }: NodeInspectorProps) {
+function NodeInspector({ node, project, breakpointId, component }: NodeInspectorProps) {
   const box = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints);
 
   return (
@@ -1706,6 +2219,14 @@ function NodeInspector({ node, project, breakpointId }: NodeInspectorProps) {
       <Section title="Cursor" placeholder />
       <Section title="Effects" placeholder />
       <StylesSection nodeId={node.id} style={box.style} project={project} />
+      {component ? (
+        <ComponentPropertiesSection
+          component={component}
+          node={node}
+          project={project}
+          breakpointId={breakpointId}
+        />
+      ) : null}
       <Section title="Code overrides" placeholder />
     </>
   );
@@ -1738,8 +2259,22 @@ export function PropertiesPanel() {
   }
 
   if (node.type === "componentInstance") {
-    return <InstanceInspector node={node} project={project} breakpointId={activeBreakpointId} />;
+    return (
+      <InstanceInspector
+        node={node}
+        project={project}
+        breakpointId={activeBreakpointId}
+        target={scene.target}
+      />
+    );
   }
 
-  return <NodeInspector node={node} project={project} breakpointId={activeBreakpointId} />;
+  return (
+    <NodeInspector
+      node={node}
+      project={project}
+      breakpointId={activeBreakpointId}
+      component={scene.kind === "component" ? scene.component : null}
+    />
+  );
 }
