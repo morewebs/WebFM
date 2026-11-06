@@ -19,6 +19,7 @@
     "paths": {
       "@webfm/model": ["packages/model/src/index.ts"],
       "@webfm/render": ["packages/render/src/index.ts"],
+      "@webfm/render/server": ["packages/render/src/server.ts"],
       "@webfm/publish": ["packages/publish/src/index.ts"]
     }
   },

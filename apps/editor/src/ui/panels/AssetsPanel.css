@@ -1,0 +1,124 @@
+/*
+ * Assets tab.
+ *
+ * The upload control reuses the 30px #1f1f1f control metrics; asset cards are
+ * a two-column grid of square thumbnails with a 12px name and 11px dimensions.
+ * Only panel-specific pieces live here; colours come from the shared tokens.
+ */
+
+.wfm-assets__upload {
+  width: 100%;
+  height: var(--wfm-control-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-surface);
+  color: var(--wfm-text);
+  font-size: 13px;
+}
+
+.wfm-assets__upload:hover:not(:disabled) {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-assets__upload:disabled {
+  color: var(--wfm-text-dim);
+  cursor: default;
+}
+
+.wfm-assets__progress {
+  height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--wfm-border);
+}
+
+.wfm-assets__progress span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--wfm-accent);
+  animation: wfm-assets-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes wfm-assets-progress {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(350%);
+  }
+}
+
+.wfm-assets__error {
+  margin: 0;
+  color: var(--wfm-danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wfm-assets__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wfm-asset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  color: var(--wfm-text);
+  text-align: left;
+}
+
+.wfm-asset__thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-surface);
+  color: var(--wfm-text-faint);
+}
+
+.wfm-asset__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wfm-asset:hover:not(:disabled) .wfm-asset__thumb {
+  outline: 1px solid var(--wfm-border-soft);
+}
+
+.wfm-asset__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.wfm-asset__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.wfm-asset__dims {
+  color: var(--wfm-text-faint);
+  font-size: 11px;
+}
+
+.wfm-asset:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

@@ -1,0 +1,213 @@
+{
+  "source": "https://framer.com/projects/Expanded-Author--NUUhyTVIP2UEXBCIUFAy-aqA28?node=augiA20Il",
+  "extractedAt": "2026-11-06T22:14:47.261Z",
+  "method": "serialized from the live Framer editor DOM with browser_execute_script",
+  "screenshots": [
+    "06-editor-initial-new-project.png",
+    "63-frame-properties.png",
+    "70-insert-panel.png"
+  ],
+  "assets": {
+    "logo": {
+      "sourceIndex": 33,
+      "sourceLabel": "projectbar-menu-button",
+      "width": 10,
+      "height": 15,
+      "viewBox": "0 0 10 15",
+      "file": "icons.ts"
+    },
+    "chevron-down": {
+      "sourceIndex": 34,
+      "sourceLabel": "projectbar-menu-button",
+      "width": 8,
+      "height": 8,
+      "viewBox": "0 0 8 8",
+      "file": "icons.ts"
+    },
+    "insert": {
+      "sourceIndex": 35,
+      "sourceLabel": "Insert",
+      "width": 14,
+      "height": 14,
+      "viewBox": "0 0 14 14",
+      "file": "icons.ts"
+    },
+    "layout": {
+      "sourceIndex": 36,
+      "sourceLabel": "Layout",
+      "width": 14,
+      "height": 14,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "text": {
+      "sourceIndex": 37,
+      "sourceLabel": "Text",
+      "width": 14,
+      "height": 14,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "vector": {
+      "sourceIndex": 38,
+      "sourceLabel": "Vector",
+      "width": 14,
+      "height": 14,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "branch": {
+      "sourceIndex": 39,
+      "sourceLabel": "main",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "play": {
+      "sourceIndex": 40,
+      "sourceLabel": "Preview",
+      "width": 14,
+      "height": 14,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "select": {
+      "sourceIndex": 41,
+      "sourceLabel": "Select",
+      "width": 20,
+      "height": 20,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "hand": {
+      "sourceIndex": 42,
+      "sourceLabel": "Pan",
+      "width": 20,
+      "height": 20,
+      "viewBox": "0 0 20 20",
+      "file": "icons.ts"
+    },
+    "comment": {
+      "sourceIndex": 43,
+      "sourceLabel": "Comment",
+      "width": 20,
+      "height": 20,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "moon": {
+      "sourceIndex": 44,
+      "sourceLabel": "Theme",
+      "width": 20,
+      "height": 20,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "search": {
+      "sourceIndex": 12,
+      "sourceLabel": "Search",
+      "width": 12,
+      "height": 12,
+      "viewBox": "0 0 12 12",
+      "file": "icons.ts"
+    },
+    "insert-icons": {
+      "sourceIndex": 13,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "insert-shaders": {
+      "sourceIndex": 15,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "insert-media": {
+      "sourceIndex": 17,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": "0 0 12 12",
+      "file": "icons.ts"
+    },
+    "insert-forms": {
+      "sourceIndex": 19,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "insert-interactive": {
+      "sourceIndex": 21,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "insert-social": {
+      "sourceIndex": 23,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "insert-utility": {
+      "sourceIndex": 25,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": "0 0 12 12",
+      "file": "icons.ts"
+    },
+    "insert-creative": {
+      "sourceIndex": 27,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": null,
+      "file": "icons.ts"
+    },
+    "insert-collections": {
+      "sourceIndex": 29,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": "0 0 12 12",
+      "file": "icons.ts"
+    },
+    "insert-fields": {
+      "sourceIndex": 31,
+      "sourceLabel": "",
+      "width": 12,
+      "height": 12,
+      "viewBox": "0 0 12 12",
+      "file": "icons.ts"
+    }
+  },
+  "fonts": {
+    "family": "Inter Variable UI",
+    "files": [
+      "apps/editor/src/assets/fonts/InterVariable.latin.woff2",
+      "apps/editor/src/assets/fonts/InterVariable.latin-ext.woff2",
+      "apps/editor/src/assets/fonts/InterVariable-Italic.latin.woff2"
+    ],
+    "sourceUrls": [
+      "https://app.framerstatic.com/InterVariable.latin-5EYCRJRY.woff2",
+      "https://app.framerstatic.com/InterVariable.latin-ext-Z2WFU6AS.woff2",
+      "https://app.framerstatic.com/InterVariable-Italic.latin-WWX2NOYT.woff2"
+    ],
+    "license": "Inter is licensed under the SIL Open Font License 1.1; see docs/FRAMER-ASSETS.md."
+  },
+  "unverified": [
+    "oval tool glyph (not present as an SVG in the captured DOM)"
+  ]
+}

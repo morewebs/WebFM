@@ -27,7 +27,22 @@ describe("createProject", () => {
     const page = project.pages[0]!;
     expect(page.path).toBe("/");
     expect(page.root.type).toBe("frame");
-    expect(page.root.responsive.base.size.width).toEqual({ mode: "fill" });
+    expect(page.root.responsive.base.size.width).toEqual({ mode: "fixed", value: 1200 });
+    expect(page.root.responsive.base.size.height).toEqual({ mode: "fixed", value: 1000 });
+    expect(page.root.responsive.base.style.fill).toEqual({
+      type: "solid",
+      color: "#ffffff",
+      opacity: 1,
+    });
+    expect(page.root.responsive.base.style.overflow).toBe("clip");
+    expect(page.root.responsive.overrides.bp_tablet?.size?.width).toEqual({
+      mode: "fixed",
+      value: 810,
+    });
+    expect(page.root.responsive.overrides.bp_phone?.size?.width).toEqual({
+      mode: "fixed",
+      value: 390,
+    });
   });
 });
 
@@ -69,6 +84,17 @@ describe("responsive resolution", () => {
 
     const resolved = resolveNodeProps(root, "bp_tablet", project.breakpoints);
     expect(resolved.size.width).toEqual({ mode: "hug" });
+  });
+
+  it("merges layout when only the layout mode changes", () => {
+    const node = createFrame({ props: { layout: { mode: "stack" } } });
+    const layout = node.responsive.base.layout;
+
+    expect(layout.mode).toBe("stack");
+    expect(layout.direction).toBe("vertical");
+    expect(layout.gap).toBe(10);
+    expect(layout.padding).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+    expect(layout.grid).toEqual({ columns: 2, rows: 2, columnGap: 10, rowGap: 10 });
   });
 });
 

@@ -48,17 +48,18 @@ function mergeValue(base: unknown, patch: unknown): unknown {
   if (patch === undefined) return base;
   if (Array.isArray(patch)) return patch.map((entry) => clone(entry));
   if (isPlainObject(patch) && isPlainObject(base)) {
-    // Discriminated values (fill.type, size.mode) are replaced as a whole when
-    // the variant changes; otherwise their old fields would leak into the new
-    // variant (e.g. a stale pixel value on a fill-size override).
-    for (const discriminant of ["type", "mode"] as const) {
-      if (
-        discriminant in patch &&
-        discriminant in base &&
-        patch[discriminant] !== base[discriminant]
-      ) {
-        return clone(patch);
-      }
+    // Discriminated values are replaced as a whole when their variant changes.
+    // "type" identifies a Fill variant; "mode" identifies a SizeValue variant
+    // (only {mode, value} keys). LayoutProps also has a mode, but it carries
+    // many other fields, so changing layout.mode must merge instead of
+    // dropping the direction, padding, gap and grid fields.
+    if ("type" in patch && "type" in base && patch.type !== base.type) {
+      return clone(patch);
+    }
+    if ("mode" in patch && "mode" in base && patch.mode !== base.mode) {
+      const keys = [...Object.keys(base), ...Object.keys(patch)];
+      const isSizeValue = keys.every((key) => key === "mode" || key === "value");
+      if (isSizeValue) return clone(patch);
     }
     const out: Record<string, unknown> = { ...base };
     for (const [key, value] of Object.entries(patch)) {
@@ -167,7 +168,7 @@ export function defaultStyle(): StyleProps {
     radius: defaultRadius(),
     shadows: [],
     opacity: 1,
-    overflow: "visible",
+    overflow: "clip",
     blendMode: "normal",
     rotate: 0,
   };
@@ -358,24 +359,32 @@ export interface CreatePageOptions {
   path?: string;
   root?: FrameNode;
   background?: Fill | null;
+  breakpoints?: Breakpoint[];
 }
 
 export function createPage(options: CreatePageOptions = {}): Page {
   const name = options.name ?? "Home";
+  const root =
+    options.root ??
+    createFrame({
+      name: "Desktop",
+      props: {
+        // Verified against the live editor: a new page root is a Desktop frame,
+        // 1200 x 1000 Fixed, white, with overflow Clip.
+        size: { width: { mode: "fixed", value: 1200 }, height: { mode: "fixed", value: 1000 } },
+      },
+    });
+  for (const breakpoint of (options.breakpoints ?? []).slice(1)) {
+    root.responsive.overrides[breakpoint.id] = {
+      size: { width: { mode: "fixed", value: breakpoint.width } },
+    };
+  }
   return {
     id: options.id ?? createId("page"),
     name,
     path: options.path ?? "/",
     background: options.background === undefined ? defaultFill() : options.background,
-    root:
-      options.root ??
-      createFrame({
-        name: "Desktop",
-        props: {
-          size: { width: { mode: "fill" }, height: { mode: "hug" } },
-          style: { fill: null },
-        },
-      }),
+    root,
   };
 }
 
@@ -394,13 +403,7 @@ export function createProject(options: CreateProjectOptions = {}): Project {
   const page = createPage({
     name: options.pageName,
     path: options.pagePath,
-    root: createFrame({
-      name: "Desktop",
-      props: {
-        size: { width: { mode: "fill" }, height: { mode: "hug" } },
-        style: { fill: null },
-      },
-    }),
+    breakpoints,
   });
   return {
     schemaVersion: SCHEMA_VERSION,

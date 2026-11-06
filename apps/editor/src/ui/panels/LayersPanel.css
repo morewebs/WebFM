@@ -1,0 +1,162 @@
+/*
+ * Layers tab.
+ *
+ * Shared .wfm-* classes provide the 30px row, #1f1f1f hover, #0099ff selection,
+ * 13px name and 10px Primary badge. This file only adds the tree anatomy:
+ * a 16px disclosure slot, the 12px-per-depth indent, hover actions, the inline
+ * rename field and the drag/drop indicators, all measured against Framer.
+ */
+
+.wfm-layers__divider {
+  height: 1px;
+  background: var(--wfm-border);
+}
+
+.wfm-layer-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.wfm-layer-row {
+  position: relative;
+  gap: 0;
+  user-select: none;
+}
+
+/* The disclosure slot stays reserved so every glyph line starts at the same x
+   whether or not a frame can be collapsed (verified in the reference row). */
+.wfm-layer-row__lead {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.wfm-layer-row__disclosure {
+  width: 16px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-layer-row__disclosure:hover {
+  color: var(--wfm-text);
+}
+
+.wfm-layer-row__glyph {
+  flex: 0 0 16px;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-layer-row__name {
+  margin-left: 8px;
+}
+
+.wfm-layer-row.is-selected .wfm-layer-row__glyph,
+.wfm-layer-row.is-selected .wfm-layer-row__disclosure {
+  color: #fff;
+}
+
+.wfm-layer-row.is-hidden .wfm-layer-row__glyph,
+.wfm-layer-row.is-hidden .wfm-list-row__name {
+  opacity: 0.55;
+}
+
+/* --------------------------------------------------------- hover actions */
+
+.wfm-layer-row__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 90ms ease;
+}
+
+.wfm-layer-row:hover .wfm-layer-row__actions,
+.wfm-layer-row:focus-within .wfm-layer-row__actions,
+.wfm-layer-row__actions.is-visible {
+  opacity: 1;
+}
+
+.wfm-layer-row__action {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-layer-row__action:hover {
+  background: rgb(255 255 255 / 14%);
+  color: var(--wfm-text);
+}
+
+.wfm-layer-row.is-selected .wfm-layer-row__action {
+  color: rgb(255 255 255 / 75%);
+}
+
+.wfm-layer-row.is-selected .wfm-layer-row__action:hover {
+  background: rgb(255 255 255 / 20%);
+  color: #fff;
+}
+
+/* ----------------------------------------------------------- inline rename */
+
+.wfm-layer-row__rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 32%);
+  color: #fff;
+  font-size: 13px;
+  user-select: text;
+}
+
+.wfm-layer-row__rename:focus {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 45%);
+}
+
+/* -------------------------------------------------------------- drag/drop */
+
+.wfm-layer-row.is-dragging {
+  opacity: 0.45;
+}
+
+.wfm-layer-row.is-drop-before::before,
+.wfm-layer-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--wfm-accent);
+  pointer-events: none;
+}
+
+.wfm-layer-row.is-drop-before::before {
+  top: -1px;
+}
+
+.wfm-layer-row.is-drop-after::after {
+  bottom: -1px;
+}
+
+.wfm-layer-row.is-drop-inside {
+  box-shadow: inset 0 0 0 1px var(--wfm-accent);
+}
+
+/* The menu is positioned from the pointer, so it escapes the panel scroll. */
+.wfm-layer-menu {
+  position: fixed;
+}

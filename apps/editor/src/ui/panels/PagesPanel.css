@@ -1,0 +1,93 @@
+/*
+ * Pages tab.
+ *
+ * Sections use the shared .wfm-panel-section__header (28px, 12px label, +
+ * control); rows use .wfm-list-row (30px, 13px). The reference screenshot shows
+ * the current page as a #1f1f1f pill, not the blue layer-selection state, so
+ * the active modifier intentionally stays on the shared surface token.
+ * This file only adds the empty page-glyph slot, the active pill, and inline
+ * rename.
+ */
+
+.wfm-pages__divider {
+  height: 1px;
+  background: var(--wfm-border);
+}
+
+.wfm-pages__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wfm-page-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wfm-page-row {
+  gap: 0;
+  user-select: none;
+}
+
+/* Empty slot matching the layer tree's disclosure column, so page and layer
+   glyphs share the same x position in the verified reference. */
+.wfm-page-row__lead {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 22px;
+}
+
+.wfm-page-row__glyph {
+  flex: 0 0 16px;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-page-row__name {
+  margin-left: 8px;
+}
+
+.wfm-page-row.is-active {
+  background: var(--wfm-surface);
+}
+
+.wfm-page-row.is-active .wfm-page-row__glyph {
+  color: var(--wfm-text);
+}
+
+.wfm-page-row:focus-visible {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 35%);
+}
+
+/* ----------------------------------------------------------- inline rename */
+
+.wfm-page-row__rename {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 32%);
+  color: var(--wfm-text);
+  font-size: 13px;
+  user-select: text;
+}
+
+.wfm-page-row__rename:focus {
+  box-shadow: inset 0 0 0 1px var(--wfm-accent);
+}
+
+/* ------------------------------------------------------- disabled add (Design) */
+
+.wfm-pages__add:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wfm-pages__add:disabled:hover {
+  background: transparent;
+  color: var(--wfm-text-dim);
+}

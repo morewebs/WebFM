@@ -1,0 +1,315 @@
+/*
+ * Style tab property panel.
+ *
+ * Section headers, rows and fields use the shared .wfm-* metrics from
+ * styles.css. This file only adds the panel-specific compositions: the size
+ * link rail, four-up padding/radius fields, colour swatches, the Styles
+ * property menu and the image preview.
+ */
+
+.wfm-pp__not-in-build {
+  margin-left: 8px;
+  color: var(--wfm-text-faint);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.wfm-pp__unit {
+  flex: none;
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+}
+
+.wfm-pp__value-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wfm-pp__muted {
+  color: var(--wfm-text-faint);
+}
+
+/* A disabled + is still visible but cannot be mistaken for a working control. */
+.wfm-section__add:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wfm-section__add:disabled:hover {
+  background: transparent;
+  color: var(--wfm-text-dim);
+}
+
+/* ---------------------------------------------------------------- breakpoint */
+
+.wfm-pp__size-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.wfm-pp__size-value {
+  flex: 1;
+}
+
+.wfm-pp__size-select {
+  flex: 0 0 72px;
+  width: 72px;
+}
+
+.wfm-pp__link-row {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  padding-left: 78px;
+}
+
+.wfm-link-btn.is-active {
+  color: var(--wfm-accent);
+}
+
+.wfm-link-btn:disabled {
+  opacity: 0.35;
+}
+
+/* ------------------------------------------------------------ four-up fields */
+
+.wfm-pp__quad {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+}
+
+.wfm-pp__quad .wfm-field {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  padding: 0 4px;
+  text-align: center;
+}
+
+/* --------------------------------------------------------------- fill/colour */
+
+.wfm-pp__swatch {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 2px;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.wfm-pp__swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.wfm-pp__swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 1px;
+}
+
+.wfm-pp__swatch::-moz-color-swatch {
+  border: 0;
+  border-radius: 1px;
+}
+
+.wfm-pp__swatch-empty {
+  display: block;
+  background:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%),
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%);
+  background-position:
+    0 0,
+    4px 4px;
+  background-size: 8px 8px;
+  cursor: default;
+}
+
+.wfm-pp__hex {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--wfm-text);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.wfm-pp__hex:focus {
+  box-shadow: inset 0 0 0 1px var(--wfm-accent);
+}
+
+/* ------------------------------------------------------- opacity and switches */
+
+.wfm-pp__slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--wfm-accent);
+}
+
+.wfm-pp__opacity-number {
+  flex: 0 0 46px;
+  width: 46px;
+  text-align: right;
+}
+
+.wfm-pp__switch {
+  flex: none;
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 9px;
+  background: var(--wfm-surface);
+  transition: background 120ms ease;
+}
+
+.wfm-pp__switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--wfm-text-dim);
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+}
+
+.wfm-pp__switch.is-on {
+  background: var(--wfm-accent);
+}
+
+.wfm-pp__switch.is-on::after {
+  background: #fff;
+  transform: translateX(13px);
+}
+
+/* ---------------------------------------------------------------- typography */
+
+.wfm-pp__unit-select {
+  flex: 0 0 62px;
+  width: 62px;
+}
+
+.wfm-pp__toggles {
+  display: flex;
+  gap: 4px;
+}
+
+.wfm-pp__text-toggle {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--wfm-surface);
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wfm-pp__text-toggle:hover {
+  color: var(--wfm-text);
+}
+
+.wfm-pp__text-toggle.is-active {
+  background: var(--wfm-accent);
+  color: #fff;
+}
+
+/* ----------------------------------------------------------- styles + menu */
+
+.wfm-pp__menu-wrap {
+  position: relative;
+  display: flex;
+}
+
+.wfm-pp__prop-menu {
+  position: absolute;
+  top: 30px;
+  right: -4px;
+  z-index: 30;
+  width: 170px;
+  padding: 4px;
+  background: var(--wfm-surface);
+  border: 1px solid var(--wfm-border-soft);
+  border-radius: 6px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+}
+
+.wfm-pp__prop-item {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: var(--wfm-text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.wfm-pp__prop-item:hover {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-pp__prop-check {
+  width: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--wfm-accent);
+}
+
+.wfm-pp__shadow-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wfm-pp__add-button {
+  width: 100%;
+  height: var(--wfm-control-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-surface);
+  color: var(--wfm-text);
+  font-size: 12px;
+}
+
+.wfm-pp__add-button:hover {
+  background: var(--wfm-surface-hover);
+}
+
+/* -------------------------------------------------------------------- image */
+
+.wfm-pp__image-preview {
+  height: 120px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-surface);
+  color: var(--wfm-text-faint);
+  font-size: 12px;
+}
+
+.wfm-pp__image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
