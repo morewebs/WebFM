@@ -20,6 +20,24 @@ npm run dev
 Projects are stored as plain JSON under `.webfm-data/` by default. Set
 `WEBFM_DATA_DIR` to use another directory.
 
+## What works today
+
+- The Framer 3.0-shaped editor: top bar, Pages/Layers/Assets, Agent/Style,
+  canvas, breakpoint bar, floating toolbar, extracted Inter UI font and chrome
+  SVGs.
+- Pages with Frame, Stack, Text and Image; select, move, resize, text editing,
+  layers with rename/hide/lock/drag, align/distribute, undo/redo and nudges.
+- A Style panel for breakpoint position/size, layout, typography, fill, border,
+  radius, shadow, opacity and overflow, with responsive overrides.
+- Components: create from a layer, instances, master editing, variants,
+  property controls with instance overrides, and default variants.
+- Custom breakpoints (add/remove) and Appear/Hover/Tap effects with
+  Fade/Slide/Scale, duration, delay and easing.
+- Preview and a pluggable static publish pipeline with assets and zip download.
+
+Not built yet: code components, CMS, auth/cloud deployment, hosting,
+multiplayer, comments, scroll/drag interactions and import.
+
 ## What is here
 
 | Path | Purpose |

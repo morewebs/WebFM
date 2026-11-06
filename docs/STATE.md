@@ -24,6 +24,7 @@ including component property controls. Interactions are the next slice.
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
+| Alignment | done | 8 align/distribute actions for free-layout siblings; buttons + Alt shortcuts; verified. Text layers auto-rename on content edit. |
 | Interactions | done | Appear/Hover/Tap with fade/slide/scale, duration, delay and easing; Preview and publish CSS; verified. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
 | Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
@@ -46,6 +47,9 @@ including component property controls. Interactions are the next slice.
   selects the instance; Add variant; instance variant switch changes rendered
   content; second instance inserted from Assets; publish renders both instances
   with their variant content.
+- Alignment: selected two instances, aligned left (both x=0) and center-h
+  (x=450) with one undo entry each; Alt+A triggered the same alignment; a text
+  content edit renamed the layer to "Auto renamed".
 - Interactions: added Appear (slide up, 600ms) and Hover (scale) to a
   component instance; Preview contained the keyframes and :hover rule with the
   expected animation/transition; publish CSS contained the same; changing the
@@ -65,7 +69,7 @@ including component property controls. Interactions are the next slice.
 ## Next
 
 1. Code components, then CMS.
-2. Alignment actions; text auto-rename; page background editing.
+2. Page background editing; instance style overrides; per-variant property defaults.
 3. Instance style overrides; per-variant property defaults; publish class
    scoping for component variants.
 4. More interaction triggers (scroll, drag) and effect types; multiple effects
@@ -87,5 +91,8 @@ including component property controls. Interactions are the next slice.
 - Text layers do not auto-rename with content.
 - Only the first interaction per trigger (appear/hover/tap) is emitted; scroll,
   drag and loop triggers are not built.
+- Alignment applies to siblings whose parent uses free layout; stack/grid
+  alignment follows the layout and the buttons disable. Distribution needs 3+
+  layers; the extra alignment menu is not built.
 - Static exports use root-absolute asset URLs (no base-path option yet).
 - Extracted Framer assets carry redistribution risk (D17).

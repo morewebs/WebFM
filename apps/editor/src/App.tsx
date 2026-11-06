@@ -86,6 +86,8 @@ export function App() {
           const state = useProjectStore.getState();
           if (state.editingComponent) state.exitComponent();
         },
+        align: (mode) =>
+          window.dispatchEvent(new CustomEvent("wfm:align", { detail: mode })),
       }),
     [undo, redo, deleteSelection, duplicateSelection, clearSelection, setZoom],
   );

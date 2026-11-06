@@ -1,22 +1,38 @@
-import { Fragment } from "react";
-import { Icon } from "../icons";
+import { Fragment, useEffect } from "react";
+import type { AlignMode } from "../canvas/alignment";
+import { useAlignSelection } from "../canvas/alignment";
+import { Icon, type IconName } from "../icons";
 import { PropertiesPanel } from "../panels/PropertiesPanel";
 import { useUIStore } from "../ui-store";
 
-const alignButtons = [
-  { name: "align-left", title: "Align left (Alt+A)" },
-  { name: "align-center-h", title: "Align horizontally (Alt+H)" },
-  { name: "align-right", title: "Align right (Alt+D)" },
-  { name: "distribute-h", title: "Distribute horizontally (Ctrl+Alt+H)" },
-  { name: "align-top", title: "Align top (Alt+W)" },
-  { name: "align-center-v", title: "Align vertically (Alt+V)" },
-  { name: "align-bottom", title: "Align bottom (Alt+S)" },
-  { name: "distribute-v", title: "Distribute vertically (Ctrl+Alt+V)" },
-] as const;
+const alignButtons: ReadonlyArray<{
+  name: IconName;
+  mode: AlignMode;
+  title: string;
+}> = [
+  { name: "align-left", mode: "left", title: "Align left (Alt+A)" },
+  { name: "align-center-h", mode: "center-h", title: "Align horizontally (Alt+H)" },
+  { name: "align-right", mode: "right", title: "Align right (Alt+D)" },
+  { name: "distribute-h", mode: "distribute-h", title: "Distribute horizontally (Ctrl+Alt+H)" },
+  { name: "align-top", mode: "top", title: "Align top (Alt+W)" },
+  { name: "align-center-v", mode: "center-v", title: "Align vertically (Alt+V)" },
+  { name: "align-bottom", mode: "bottom", title: "Align bottom (Alt+S)" },
+  { name: "distribute-v", mode: "distribute-v", title: "Distribute vertically (Ctrl+Alt+V)" },
+];
 
 export function RightSidebar() {
   const rightTab = useUIStore((state) => state.rightTab);
   const setRightTab = useUIStore((state) => state.setRightTab);
+  const { align, canAlign } = useAlignSelection();
+
+  useEffect(() => {
+    const handleAlign = (event: Event): void => {
+      const mode = (event as CustomEvent<AlignMode>).detail;
+      if (mode) align(mode);
+    };
+    window.addEventListener("wfm:align", handleAlign);
+    return () => window.removeEventListener("wfm:align", handleAlign);
+  }, [align]);
 
   return (
     <aside className="wfm-rightbar">
@@ -47,9 +63,9 @@ export function RightSidebar() {
                 <button
                   type="button"
                   className="wfm-alignbar__button"
-                  title={`${button.title} — alignment actions are not in this build`}
-                  disabled
-                  style={{ opacity: 0.4 }}
+                  title={button.title}
+                  disabled={!canAlign(button.mode)}
+                  onClick={() => align(button.mode)}
                 >
                   <Icon name={button.name} size={16} />
                 </button>

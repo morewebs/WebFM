@@ -41,7 +41,19 @@ describe("shortcut registry", () => {
     expect(bindings.map((binding) => binding.id).sort()).toEqual(
       SHORTCUT_DEFINITIONS.map((definition) => definition.id).sort(),
     );
-    expect(SHORTCUT_DEFINITIONS).toHaveLength(20);
+    expect(SHORTCUT_DEFINITIONS).toHaveLength(28);
+  });
+
+  it("maps the alignment shortcuts", () => {
+    const bindings = createShortcutBindings(actions());
+    expect(bindingFor(bindings, "align-left").match(keyEvent({ key: "a", altKey: true }))).toBe(true);
+    expect(bindingFor(bindings, "align-left").match(keyEvent({ key: "a" }))).toBe(false);
+    expect(
+      bindingFor(bindings, "distribute-h").match(keyEvent({ key: "h", ctrlKey: true, altKey: true })),
+    ).toBe(true);
+    expect(bindingFor(bindings, "distribute-v").match(keyEvent({ key: "v", altKey: true }))).toBe(
+      false,
+    );
   });
 
   it("maps the tool and panel shortcuts without modifiers", () => {

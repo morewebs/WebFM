@@ -25,6 +25,14 @@ export type ShortcutId =
   | "preview"
   | "publish"
   | "zoom-100"
+  | "align-left"
+  | "align-center-h"
+  | "align-right"
+  | "distribute-h"
+  | "align-top"
+  | "align-center-v"
+  | "align-bottom"
+  | "distribute-v"
   | "create-component"
   | "back-to-page";
 
@@ -64,6 +72,7 @@ export interface ShortcutActions {
   openPreview?(): void;
   openPublish?(): void;
   setZoom?(zoom: number): void;
+  align?(mode: string): void;
   createComponent?(): void;
   backToPage?(): void;
 }
@@ -99,6 +108,14 @@ export const SHORTCUT_DEFINITIONS: ReadonlyArray<Pick<ShortcutBinding, "id" | "k
   { id: "zoom-100", keys: "Mod+0", label: "Zoom to 100%" },
   { id: "create-component", keys: "Mod+Alt+K", label: "Create Component" },
   { id: "back-to-page", keys: "Alt+Escape", label: "Back to page" },
+  { id: "align-left", keys: "Alt+A", label: "Align left" },
+  { id: "align-center-h", keys: "Alt+H", label: "Align horizontally" },
+  { id: "align-right", keys: "Alt+D", label: "Align right" },
+  { id: "distribute-h", keys: "Mod+Alt+H", label: "Distribute horizontally" },
+  { id: "align-top", keys: "Alt+W", label: "Align top" },
+  { id: "align-center-v", keys: "Alt+V", label: "Align vertically" },
+  { id: "align-bottom", keys: "Alt+S", label: "Align bottom" },
+  { id: "distribute-v", keys: "Mod+Alt+V", label: "Distribute vertically" },
 ];
 
 const IGNORED_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -262,6 +279,62 @@ export function createShortcutBindings(actions: ShortcutActions): ShortcutBindin
       label: "Oval tool",
       match: (event) => hasNoModifiers(event) && key(event) === "o",
       run: () => actions.setTool?.("oval"),
+    },
+    {
+      id: "align-left",
+      keys: "Alt+A",
+      label: "Align left",
+      match: (event) => event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "a",
+      run: () => actions.align?.("left"),
+    },
+    {
+      id: "align-center-h",
+      keys: "Alt+H",
+      label: "Align horizontally",
+      match: (event) => event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "h",
+      run: () => actions.align?.("center-h"),
+    },
+    {
+      id: "align-right",
+      keys: "Alt+D",
+      label: "Align right",
+      match: (event) => event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "d",
+      run: () => actions.align?.("right"),
+    },
+    {
+      id: "distribute-h",
+      keys: "Mod+Alt+H",
+      label: "Distribute horizontally",
+      match: (event) => hasPrimary(event) && event.altKey === true && !event.shiftKey && key(event) === "h",
+      run: () => actions.align?.("distribute-h"),
+    },
+    {
+      id: "align-top",
+      keys: "Alt+W",
+      label: "Align top",
+      match: (event) => event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "w",
+      run: () => actions.align?.("top"),
+    },
+    {
+      id: "align-center-v",
+      keys: "Alt+V",
+      label: "Align vertically",
+      match: (event) => event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "v",
+      run: () => actions.align?.("center-v"),
+    },
+    {
+      id: "align-bottom",
+      keys: "Alt+S",
+      label: "Align bottom",
+      match: (event) => event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "s",
+      run: () => actions.align?.("bottom"),
+    },
+    {
+      id: "distribute-v",
+      keys: "Mod+Alt+V",
+      label: "Distribute vertically",
+      match: (event) => hasPrimary(event) && event.altKey === true && !event.shiftKey && key(event) === "v",
+      run: () => actions.align?.("distribute-v"),
     },
     {
       id: "delete-selection",
