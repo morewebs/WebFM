@@ -1,14 +1,18 @@
 import { type Draft, produce } from "immer";
 import { describe, expect, it } from "vitest";
 import { createFrame, createImage, createProject, createText, resolveNodeProps } from "./defaults";
+import { applyOperation, createHistory, redo, undo } from "./history";
 import {
   addBreakpoint,
+  addInteraction,
   addPage,
   createComponentFromNode,
   duplicateNode,
+  type InteractionInput,
   insertNode,
   moveNode,
   removeBreakpoint,
+  removeInteraction,
   removeNode,
   removePage,
   renameNode,
@@ -18,12 +22,22 @@ import {
   setProjectPublish,
   updateBoxProps,
   updateImageProps,
+  updateInteraction,
   updateNode,
   updatePage,
   updateTextProps,
 } from "./operations";
 import { collectNodes, findNode } from "./tree";
-import type { ComponentVariant, FrameNode, Project, SceneNode } from "./types";
+import type {
+  ComponentVariant,
+  FrameNode,
+  InteractionDirection,
+  InteractionEasing,
+  InteractionEffect,
+  InteractionTrigger,
+  Project,
+  SceneNode,
+} from "./types";
 
 /** Runs a recipe against a draft and returns both the next project and its result. */
 function run<T>(
@@ -587,13 +601,11 @@ describe("breakpoints", () => {
     expect(() =>
       run(base, (draft) => addBreakpoint(draft, { name: "Wider", width: 1440 })),
     ).toThrow(/narrower than the primary breakpoint/);
-    expect(() => run(base, (draft) => addBreakpoint(draft, { name: "Desktop", width: 500 }))).toThrow(
-      /already exists/,
-    );
     expect(() =>
-      run(base, (draft) =>
-        addBreakpoint(draft, { name: "Narrow", width: 500, id: "bp_desktop" }),
-      ),
+      run(base, (draft) => addBreakpoint(draft, { name: "Desktop", width: 500 })),
+    ).toThrow(/already exists/);
+    expect(() =>
+      run(base, (draft) => addBreakpoint(draft, { name: "Narrow", width: 500, id: "bp_desktop" })),
     ).toThrow(/id "bp_desktop" is already used/);
   });
 
@@ -798,5 +810,200 @@ describe("project metadata", () => {
     const cleared = run(published, (draft) => setProjectPublish(draft, undefined)).project;
     expect(cleared.publish).toBeUndefined();
     expect("publish" in cleared).toBe(false);
+  });
+});
+
+describe("interactions", () => {
+  const DEFAULT_INTERACTION: InteractionInput = {
+    trigger: "appear",
+    effect: "fade",
+    direction: "up",
+    duration: 300,
+    delay: 0,
+    easing: "ease",
+  };
+
+  const base = createProject();
+  const { pageId, rootId } = ids(base);
+  const seeded = run(base, (draft) => {
+    insertNode(draft, {
+      pageId,
+      parentId: rootId,
+      node: createFrame({ id: "hero", name: "Hero" }),
+    });
+  }).project;
+
+  function interactionsOf(project: Project, nodeId: string) {
+    return getNode(project, nodeId).interactions ?? [];
+  }
+
+  it("adds, updates and removes an interaction on a page node", () => {
+    const added = run(seeded, (draft) =>
+      addInteraction(draft, { pageId, nodeId: "hero" }, DEFAULT_INTERACTION),
+    );
+
+    expect(added.result.startsWith("interaction_")).toBe(true);
+    expect(interactionsOf(added.project, "hero")).toEqual([
+      { ...DEFAULT_INTERACTION, id: added.result },
+    ]);
+
+    const updated = run(added.project, (draft) =>
+      updateInteraction(draft, { pageId, nodeId: "hero" }, added.result, {
+        trigger: "hover",
+        effect: "slide",
+        direction: "left",
+        duration: 500,
+        delay: 50,
+        easing: "ease-in",
+      }),
+    );
+    expect(interactionsOf(updated.project, "hero")[0]).toEqual({
+      id: added.result,
+      trigger: "hover",
+      effect: "slide",
+      direction: "left",
+      duration: 500,
+      delay: 50,
+      easing: "ease-in",
+    });
+
+    const removed = run(updated.project, (draft) =>
+      removeInteraction(draft, { pageId, nodeId: "hero" }, added.result),
+    );
+    expect(interactionsOf(removed.project, "hero")).toEqual([]);
+  });
+
+  it("accepts an explicit id, keeps ids unique and appends in order", () => {
+    const first = run(seeded, (draft) =>
+      addInteraction(draft, { pageId, nodeId: "hero" }, { ...DEFAULT_INTERACTION, id: "i_one" }),
+    );
+    expect(first.result).toBe("i_one");
+
+    const second = run(first.project, (draft) =>
+      addInteraction(
+        draft,
+        { pageId, nodeId: "hero" },
+        { ...DEFAULT_INTERACTION, id: "i_two", trigger: "hover" },
+      ),
+    );
+    expect(interactionsOf(second.project, "hero").map((entry) => entry.id)).toEqual([
+      "i_one",
+      "i_two",
+    ]);
+
+    expect(() =>
+      run(second.project, (draft) =>
+        addInteraction(draft, { pageId, nodeId: "hero" }, { ...DEFAULT_INTERACTION, id: "i_one" }),
+      ),
+    ).toThrow(/already used/);
+  });
+
+  it("supports component variant nodes through component targets", () => {
+    const fixture = componentFixture();
+    const variant = variantOf(fixture.project, fixture.componentId, fixture.variantId);
+    const target = { componentId: fixture.componentId, variantId: fixture.variantId };
+    const location = { ...target, nodeId: variant.root.id };
+
+    const added = run(fixture.project, (draft) =>
+      addInteraction(draft, location, {
+        ...DEFAULT_INTERACTION,
+        trigger: "hover",
+        effect: "scale",
+      }),
+    );
+    expect(
+      variantOf(added.project, fixture.componentId, fixture.variantId).root.interactions,
+    ).toHaveLength(1);
+
+    const updated = run(added.project, (draft) =>
+      updateInteraction(draft, location, added.result, { duration: 120, easing: "linear" }),
+    );
+    expect(
+      variantOf(updated.project, fixture.componentId, fixture.variantId).root.interactions?.[0],
+    ).toMatchObject({ duration: 120, easing: "linear", trigger: "hover" });
+
+    const removed = run(updated.project, (draft) =>
+      removeInteraction(draft, location, added.result),
+    );
+    expect(
+      variantOf(removed.project, fixture.componentId, fixture.variantId).root.interactions,
+    ).toEqual([]);
+  });
+
+  it("validates trigger, effect, direction, easing, duration and delay", () => {
+    const invalid: Array<Partial<InteractionInput>> = [
+      { trigger: "scroll" as unknown as InteractionTrigger },
+      { effect: "blur" as unknown as InteractionEffect },
+      { direction: "diagonal" as unknown as InteractionDirection },
+      { easing: "spring" as unknown as InteractionEasing },
+      { duration: -1 },
+      { duration: 10001 },
+      { duration: 12.5 },
+      { delay: -5 },
+      { delay: 10001 },
+      { delay: 1.5 },
+    ];
+
+    for (const patch of invalid) {
+      expect(() =>
+        run(seeded, (draft) =>
+          addInteraction(draft, { pageId, nodeId: "hero" }, { ...DEFAULT_INTERACTION, ...patch }),
+        ),
+      ).toThrow(/Interaction/);
+    }
+
+    const added = run(seeded, (draft) =>
+      addInteraction(draft, { pageId, nodeId: "hero" }, DEFAULT_INTERACTION),
+    );
+
+    expect(() =>
+      run(added.project, (draft) =>
+        updateInteraction(draft, { pageId, nodeId: "hero" }, added.result, { duration: 20000 }),
+      ),
+    ).toThrow(/duration/);
+    expect(() =>
+      run(added.project, (draft) =>
+        updateInteraction(draft, { pageId, nodeId: "hero" }, added.result, {
+          easing: "spring" as unknown as InteractionEasing,
+        }),
+      ),
+    ).toThrow(/easing/);
+    expect(() =>
+      run(added.project, (draft) =>
+        updateInteraction(draft, { pageId, nodeId: "hero" }, "missing", { duration: 100 }),
+      ),
+    ).toThrow(/not found/);
+    expect(() =>
+      run(added.project, (draft) =>
+        removeInteraction(draft, { pageId, nodeId: "hero" }, "missing"),
+      ),
+    ).toThrow(/not found/);
+  });
+
+  it("undoes and redoes adding and removing an interaction", () => {
+    let history = createHistory(seeded);
+    let interactionId = "";
+
+    history = applyOperation(history, "Add effect", (draft) => {
+      interactionId = addInteraction(draft, { pageId, nodeId: "hero" }, DEFAULT_INTERACTION);
+    });
+    expect(getNode(history.project, "hero").interactions).toHaveLength(1);
+
+    const undone = undo(history);
+    expect(getNode(undone.project, "hero").interactions ?? []).toHaveLength(0);
+    const redone = redo(undone);
+    expect(getNode(redone.project, "hero").interactions?.map((entry) => entry.id)).toEqual([
+      interactionId,
+    ]);
+
+    const removed = applyOperation(redone, "Remove effect", (draft) => {
+      removeInteraction(draft, { pageId, nodeId: "hero" }, interactionId);
+    });
+    expect(getNode(removed.project, "hero").interactions ?? []).toHaveLength(0);
+
+    const restored = undo(removed);
+    expect(getNode(restored.project, "hero").interactions?.map((entry) => entry.id)).toEqual([
+      interactionId,
+    ]);
   });
 });

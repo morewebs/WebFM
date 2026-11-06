@@ -1,5 +1,9 @@
 # Interactions (effects)
 
+**Status: built and verified 2026-11-07.** Appear/Hover/Tap with Fade/Slide/
+Scale, duration, delay and easing are editable in the Effects section; Preview
+plays them and the static exporter emits the same CSS.
+
 This slice implements the first Framer-style effects on any node: **Appear**,
 **Hover** and **Tap** with **Fade**, **Slide** and **Scale**, plus duration,
 delay and easing. Scroll, drag, loop and custom code effects are out of scope.
@@ -69,6 +73,18 @@ placeholder note goes away):
 - Interactions must not break component instances or variants: the effect lives
   on the instance wrapper's class and is emitted with that node's CSS.
 - Publish HTML/markup is unchanged; only CSS is added.
+
+## Implementation notes
+
+- CSS uses the first interaction per trigger. Multiple interactions of other
+  triggers are kept in the document for future effects work.
+- Appear keyframes are emitted once per page; hover/active rules and the base
+  transition repeat in each breakpoint rule set (the styles are resolved per
+  breakpoint).
+- The editor canvas shows the final design state; Preview and published pages
+  animate.
+- Interactions live on the node wrapper, including component instances.
+- Scroll, drag, loop, custom easing and multiple effects per trigger are out.
 
 ## Acceptance
 
