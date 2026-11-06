@@ -1,9 +1,11 @@
 import {
   createFrame,
   createProject,
+  createText,
   findNode,
   type FrameNode,
   type Project,
+  type TextNode,
 } from "@webfm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type ProjectApi } from "../api/client";
@@ -85,6 +87,13 @@ function instanceNode(project: Project | null, nodeId: string) {
   return node;
 }
 
+function textNode(project: Project | null, nodeId: string): TextNode {
+  const page = project?.pages[0];
+  const node = page ? findNode(page.root, nodeId) : null;
+  if (node?.type !== "text") throw new Error(`Missing text node ${nodeId}`);
+  return node;
+}
+
 describe("project store", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -145,6 +154,181 @@ describe("project store", () => {
       y: 24,
     });
     expect(store.getState().history?.future).toHaveLength(0);
+  });
+
+  it("updates two sibling positions in one history entry and undoes both", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(
+      createFrame({
+        id: "node_badge",
+        name: "Badge",
+        props: {
+          position: { x: 40, y: 50 },
+          size: { width: { mode: "fixed", value: 80 }, height: { mode: "fixed", value: 24 } },
+        },
+      }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().setNodePositions(
+      [
+        { nodeId: childId, x: 10, y: 20 },
+        { nodeId: "node_badge", x: 30, y: 40 },
+      ],
+      "Align left",
+    );
+
+    expect(frameAt(store.getState().project, childId).responsive.base.position).toMatchObject({
+      x: 10,
+      y: 20,
+    });
+    expect(frameAt(store.getState().project, "node_badge").responsive.base.position).toMatchObject({
+      x: 30,
+      y: 40,
+    });
+    expect(store.getState().history?.past).toHaveLength(1);
+    expect(store.getState().history?.past[0]?.label).toBe("Align left");
+
+    store.getState().undo();
+    expect(frameAt(store.getState().project, childId).responsive.base.position).toMatchObject({
+      x: 0,
+      y: 0,
+    });
+    expect(frameAt(store.getState().project, "node_badge").responsive.base.position).toMatchObject({
+      x: 40,
+      y: 50,
+    });
+  });
+
+  it("sets positions in the component variant target", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    const card = findNode(page.root, childId);
+    if (card?.type !== "frame") throw new Error("Fixture card is not a frame");
+    card.children.push(
+      createFrame({ id: "node_a", name: "A" }),
+      createFrame({ id: "node_b", name: "B" }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card");
+    if (!created) throw new Error("Component was not created");
+
+    // Creating a component clones the subtree with fresh ids.
+    const initialRoot = variantFrame(
+      store.getState().project!,
+      created.componentId,
+      created.variantId,
+    );
+    const nodeA = findNode(initialRoot, "node_a") ?? initialRoot.children[0];
+    const nodeB = findNode(initialRoot, "node_b") ?? initialRoot.children[1];
+    if (!nodeA || !nodeB) throw new Error("Component children missing");
+
+    store.getState().setNodePositions(
+      [
+        { nodeId: nodeA.id, x: 5, y: 6 },
+        { nodeId: nodeB.id, x: 7, y: 8 },
+      ],
+      "Align top",
+    );
+
+    let root = variantFrame(store.getState().project!, created.componentId, created.variantId);
+    expect(findNode(root, nodeA.id)?.responsive.base.position).toMatchObject({ x: 5, y: 6 });
+    expect(findNode(root, nodeB.id)?.responsive.base.position).toMatchObject({ x: 7, y: 8 });
+    // The page instance keeps its own placement.
+    expect(
+      instanceNode(store.getState().project, created.instanceId).responsive.base.position,
+    ).toMatchObject({ x: 0, y: 0 });
+
+    store.getState().undo();
+    root = variantFrame(store.getState().project!, created.componentId, created.variantId);
+    expect(findNode(root, nodeA.id)?.responsive.base.position).toMatchObject({ x: 0, y: 0 });
+    expect(findNode(root, nodeB.id)?.responsive.base.position).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("renames an auto-named text node when its content changes", async () => {
+    const { project } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(createText({ id: "node_hello", content: "Hello" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().updateText("node_hello", { text: { content: "Goodbye" } });
+
+    const node = textNode(store.getState().project, "node_hello");
+    expect(node.responsive.base.text.content).toBe("Goodbye");
+    expect(node.name).toBe("Goodbye");
+    // The content change and the rename are one history entry.
+    expect(store.getState().history?.past).toHaveLength(1);
+
+    store.getState().undo();
+    const restored = textNode(store.getState().project, "node_hello");
+    expect(restored.responsive.base.text.content).toBe("Hello");
+    expect(restored.name).toBe("Hello");
+  });
+
+  it("keeps a manually renamed text node's name", async () => {
+    const { project } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(
+      createText({ id: "node_hero", name: "Hero heading", content: "Hello" }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().updateText("node_hero", { text: { content: "New words" } });
+
+    const node = textNode(store.getState().project, "node_hero");
+    expect(node.responsive.base.text.content).toBe("New words");
+    expect(node.name).toBe("Hero heading");
+  });
+
+  it("does not rename text nodes on typography-only updates", async () => {
+    const { project } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(createText({ id: "node_style", content: "Hello" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().updateText("node_style", { text: { fontSize: 32 } });
+
+    const node = textNode(store.getState().project, "node_style");
+    expect(node.responsive.base.text.fontSize).toBe(32);
+    expect(node.name).toBe("Hello");
+  });
+
+  it("truncates long content and falls back to Text for empty content", async () => {
+    const { project } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(createText({ id: "node_long", content: "Short" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().updateText("node_long", {
+      text: { content: "A very long heading that exceeds twenty-four characters" },
+    });
+    expect(textNode(store.getState().project, "node_long").name).toBe("A very long heading that");
+
+    const blankId = store.getState().insertNode(createText({ id: "node_blank", content: "Short" }));
+    if (!blankId) throw new Error("Blank text node was not inserted");
+    store.getState().updateText(blankId, { text: { content: "   " } });
+    expect(textNode(store.getState().project, blankId).name).toBe("Text");
   });
 
   it("writes box updates into the active breakpoint override", async () => {

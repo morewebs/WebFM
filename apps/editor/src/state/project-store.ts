@@ -25,6 +25,8 @@ import {
   removeBreakpoint as removeBreakpointOperation,
   renameComponent as renameComponentOperation,
   renameComponentVariant as renameComponentVariantOperation,
+  renameNode,
+  resolveNodeProps,
   setInstanceVariant as setInstanceVariantOperation,
   type BoxProps,
   type Breakpoint,
@@ -132,6 +134,7 @@ export interface ProjectStoreState {
     coalesceKey?: string,
   ): void;
   updateBox(nodeId: NodeId, patch: DeepPartial<BoxProps>, breakpointId?: BreakpointId): void;
+  setNodePositions(updates: Array<{ nodeId: NodeId; x: number; y: number }>, label?: string): void;
   updateText(nodeId: NodeId, patch: DeepPartial<TextProps>): void;
   updateImage(nodeId: NodeId, patch: DeepPartial<ImageProps>): void;
   insertNode(node: SceneNode, options?: InsertNodeOptions): NodeId | null;
@@ -275,6 +278,17 @@ function insertComponentParent(root: SceneNode, selection: NodeId[]): NodeId {
 /** Builds a `SceneTarget & extra` object without losing the target's fields. */
 function withTarget<T extends object>(target: SceneTarget, extra: T): SceneTarget & T {
   return { ...target, ...extra } as SceneTarget & T;
+}
+
+/** A text node's name is automatic while it mirrors its content, is "Text", or is blank. */
+function isAutoTextName(name: string, content: string): boolean {
+  return name === content || name === "Text" || name.trim() === "";
+}
+
+/** The name a text node gets from its content: its first 24 characters, or "Text". */
+function autoTextName(content: string): string {
+  const name = content.slice(0, 24).trim();
+  return name.length > 0 ? name : "Text";
 }
 
 export type ProjectStore = UseBoundStore<StoreApi<ProjectStoreState>>;
@@ -460,6 +474,28 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       });
     };
 
+    const setNodePositions = (
+      updates: Array<{ nodeId: NodeId; x: number; y: number }>,
+      label = "Set positions",
+    ): void => {
+      if (updates.length === 0) return;
+      const scene = currentScene();
+      if (!scene) return;
+      const breakpointId = get().activeBreakpointId;
+      applyRecipe(label, (draft) => {
+        for (const { nodeId, x, y } of updates) {
+          updateBoxProps(
+            draft,
+            withTarget(scene.target, {
+              nodeId,
+              breakpointId,
+              patch: { position: { x, y } },
+            }),
+          );
+        }
+      });
+    };
+
     const deleteSelection = (): void => {
       const state = get();
       const scene = currentScene();
@@ -632,12 +668,37 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
 
       updateBox,
 
+      setNodePositions,
+
       updateText(nodeId, patch) {
-        const scene = currentScene();
-        if (!scene) return;
-        const breakpointId = get().activeBreakpointId;
+        const state = get();
+        const scene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
+        const project = state.project;
+        if (!scene || !project) return;
+        const breakpointId = state.activeBreakpointId;
+
+        // Content edits auto-rename a node whose name still mirrors its text.
+        let autoName: string | null = null;
+        const nextContent = patch.text?.content;
+        if (nextContent !== undefined) {
+          const node = findNode(scene.root, nodeId);
+          if (node?.type === "text") {
+            const currentContent = resolveNodeProps(
+              node,
+              breakpointId,
+              project.breakpoints,
+            ).text.content;
+            if (nextContent !== currentContent && isAutoTextName(node.name, currentContent)) {
+              autoName = autoTextName(nextContent);
+            }
+          }
+        }
+
         applyRecipe("Update text", (draft) => {
           updateTextProps(draft, withTarget(scene.target, { nodeId, breakpointId, patch }));
+          if (autoName !== null) {
+            renameNode(draft, withTarget(scene.target, { nodeId }), autoName);
+          }
         });
       },
 

@@ -542,6 +542,16 @@ input {
   color: var(--wfm-text);
 }
 
+.wfm-alignbar__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.wfm-alignbar__button:disabled:hover {
+  background: transparent;
+  color: var(--wfm-text-dim);
+}
+
 .wfm-alignbar__sep {
   width: 1px;
   height: 16px;
