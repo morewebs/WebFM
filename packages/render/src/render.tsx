@@ -178,8 +178,12 @@ function renderComponentInstance(
   }
 
   const rootProps = resolveNodeProps(resolved.root, options.breakpointId, project.breakpoints);
-  // The variant root supplies appearance and layout; the instance owns placement.
-  const mergedProps: BoxProps = { ...rootProps, position: props.position };
+  // The variant root supplies layout and appearance; the instance owns its box.
+  const mergedProps: BoxProps = {
+    ...rootProps,
+    position: props.position,
+    size: props.size,
+  };
 
   return (
     <div

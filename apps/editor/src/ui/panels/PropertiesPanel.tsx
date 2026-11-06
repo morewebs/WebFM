@@ -13,14 +13,17 @@ import {
   type BoxProps,
   type Breakpoint,
   type BreakpointId,
+  type ComponentDefinition,
+  type ComponentInstanceNode,
+  type ComponentVariant,
   type DeepPartial,
   type Fill,
+  findComponentInstances,
   findNode,
   type ImageNode,
   type ImageProps,
   type LayoutProps,
   type NodeId,
-  type Page,
   type Project,
   resolveNodeProps,
   type SceneNode,
@@ -31,10 +34,11 @@ import {
   type StyleProps,
   type TextAlign,
   type TextProps,
+  type VariantId,
 } from "@webfm/model";
 import { resolveFillStyles } from "@webfm/render";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { activePageOf, useProjectStore } from "../../state/project-store";
+import { activeSceneOf, useProjectStore } from "../../state/project-store";
 import { Icon } from "../icons";
 import "./PropertiesPanel.css";
 
@@ -1529,6 +1533,141 @@ function PageDefaultsPanel() {
   );
 }
 
+/* -------------------------------------------------------------- components */
+
+/**
+ * Inspector for a selected component instance. An instance inherits its
+ * master's appearance, so only placement and the variant choice are editable
+ * here; showing the style controls would be dishonest.
+ */
+interface InstanceInspectorProps {
+  node: ComponentInstanceNode;
+  project: Project;
+  breakpointId: BreakpointId;
+}
+
+function InstanceInspector({ node, project, breakpointId }: InstanceInspectorProps) {
+  const setInstanceVariant = useProjectStore((state) => state.setInstanceVariant);
+  const enterComponent = useProjectStore((state) => state.enterComponent);
+
+  const component =
+    project.components.find((candidate) => candidate.id === node.componentId) ?? null;
+  const missing = component === null;
+  const variantId: VariantId | null = component
+    ? (component.variants.find((variant) => variant.id === node.variantId)?.id ??
+      component.variants.find((variant) => variant.id === component.defaultVariantId)?.id ??
+      component.variants[0]?.id ??
+      null)
+    : null;
+  const box = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints);
+
+  const editMain = () => {
+    if (!component) return;
+    enterComponent(component.id, variantId ?? component.defaultVariantId, node.id);
+  };
+
+  return (
+    <>
+      <Section title="Component">
+        <div className="wfm-row">
+          <span className="wfm-row__label">Main</span>
+          <span className="wfm-style-value">
+            <span className="wfm-pp__value-text">
+              {component ? component.name : "Missing component"}
+            </span>
+          </span>
+        </div>
+        <div className="wfm-row">
+          <span className="wfm-row__label">Variant</span>
+          <select
+            className="wfm-select wfm-row__grow"
+            value={variantId ?? ""}
+            aria-label="Instance variant"
+            disabled={missing || variantId === null}
+            onChange={(event) => setInstanceVariant(node.id, event.target.value)}
+          >
+            {component?.variants.map((variant) => (
+              <option key={variant.id} value={variant.id}>
+                {variant.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type="button" className="wfm-pp__add-button" disabled={missing} onClick={editMain}>
+          Edit main component
+        </button>
+      </Section>
+      <Section title="Template" placeholder />
+      <BreakpointSection nodeId={node.id} box={box} />
+      <Section title="Overrides">
+        <p className="wfm-pp__note">Style and content overrides on instances are the next slice.</p>
+      </Section>
+    </>
+  );
+}
+
+/**
+ * Inspector shown with nothing selected while editing a component. Page
+ * typography and template do not apply to a component variant.
+ */
+interface ComponentModePanelProps {
+  component: ComponentDefinition;
+  variant: ComponentVariant;
+  project: Project;
+}
+
+function ComponentModePanel({ component, variant, project }: ComponentModePanelProps) {
+  const setEditingVariant = useProjectStore((state) => state.setEditingVariant);
+  const addComponentVariant = useProjectStore((state) => state.addComponentVariant);
+  const instanceCount = findComponentInstances(project, component.id).length;
+
+  return (
+    <Section title="Component">
+      <div className="wfm-row">
+        <span className="wfm-row__label">Main</span>
+        <span className="wfm-style-value">
+          <span className="wfm-pp__value-text">{component.name}</span>
+        </span>
+      </div>
+      <div className="wfm-row">
+        <span className="wfm-row__label">Variant</span>
+        <select
+          className="wfm-select wfm-row__grow"
+          value={variant.id}
+          aria-label="Editing variant"
+          onChange={(event) => setEditingVariant(event.target.value)}
+        >
+          {component.variants.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button type="button" className="wfm-pp__add-button" onClick={() => addComponentVariant()}>
+        Add variant
+      </button>
+      <div className="wfm-row">
+        <span className="wfm-row__label">Instances</span>
+        <span className="wfm-style-value">
+          <span className="wfm-pp__value-text">{instanceCount}</span>
+        </span>
+      </div>
+      <div className="wfm-pp__variant-list">
+        {component.variants.map((candidate) => (
+          <div
+            key={candidate.id}
+            className={`wfm-pp__variant-item${candidate.id === variant.id ? " is-active" : ""}`}
+          >
+            <span className="wfm-pp__variant-dot" aria-hidden="true" />
+            <span className="wfm-pp__variant-name">{candidate.name}</span>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 /* ------------------------------------------------------------------- panel */
 
 function MultipleSelectionPanel({ count }: { count: number }) {
@@ -1576,18 +1715,31 @@ export function PropertiesPanel() {
   const project = useProjectStore((state) => state.project);
   const activePageId = useProjectStore((state) => state.activePageId);
   const activeBreakpointId = useProjectStore((state) => state.activeBreakpointId);
+  const editingComponent = useProjectStore((state) => state.editingComponent);
   const selection = useProjectStore((state) => state.selection);
 
-  const page = project ? activePageOf(project, activePageId) : null;
-  if (!project || !page) return null;
+  const scene = activeSceneOf(project, activePageId, editingComponent);
+  if (!project || !scene) return null;
 
   if (selection.length > 1) {
     return <MultipleSelectionPanel count={selection.length} />;
   }
 
   const selectedId = selection[0];
-  const node = selectedId ? findNode(page.root, selectedId) : null;
-  if (!node) return <PageDefaultsPanel />;
+  const node = selectedId ? findNode(scene.root, selectedId) : null;
+
+  if (!node) {
+    if (scene.kind === "component" && scene.component && scene.variant) {
+      return (
+        <ComponentModePanel component={scene.component} variant={scene.variant} project={project} />
+      );
+    }
+    return <PageDefaultsPanel />;
+  }
+
+  if (node.type === "componentInstance") {
+    return <InstanceInspector node={node} project={project} breakpointId={activeBreakpointId} />;
+  }
 
   return <NodeInspector node={node} project={project} breakpointId={activeBreakpointId} />;
 }

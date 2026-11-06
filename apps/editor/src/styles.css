@@ -62,8 +62,8 @@
   --wfm-accent-soft: #161f26;
   --wfm-danger: #ff6b6b;
   --wfm-ok: #62d394;
-  --wfm-topbar-h: 50px;
-  --wfm-panel-w: 259px;
+  --wfm-topbar-h: 51px;
+  --wfm-panel-w: 260px;
   --wfm-control-h: 30px;
   --wfm-section-h: 47px;
   --wfm-radius: 8px;
@@ -755,10 +755,14 @@ input {
   gap: 6px;
   padding: 0 8px;
   border-radius: var(--wfm-radius);
-  background: var(--wfm-accent-soft);
+  background: #212121;
   color: var(--wfm-accent);
   font-size: 12px;
   font-weight: 500;
+}
+
+.wfm-breakpoint-bar.is-selected {
+  background: var(--wfm-accent-soft);
 }
 
 .wfm-breakpoint-bar__width {
@@ -768,11 +772,11 @@ input {
 
 .wfm-breakpoint-bar__add {
   margin-left: auto;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--wfm-accent);
 }
 
@@ -934,6 +938,11 @@ input {
 }
 
 .wfm-menu__item.is-disabled {
+  color: var(--wfm-text-faint);
+  cursor: default;
+}
+
+.wfm-menu__item:disabled {
   color: var(--wfm-text-faint);
   cursor: default;
 }

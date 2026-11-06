@@ -352,3 +352,16 @@ export interface ProjectSummary {
   pageCount: number;
   thumbnailUrl?: string;
 }
+
+/* ------------------------------------------------------------------- targets */
+
+/**
+ * Addresses either a page or one variant of a component. The two shapes are
+ * mutually exclusive so callers cannot accidentally mix page and component ids.
+ */
+export type SceneTarget =
+  | { pageId: PageId; componentId?: never; variantId?: never }
+  | { componentId: ComponentId; variantId?: VariantId; pageId?: never };
+
+/** A node together with the page or component variant that contains it. */
+export type NodeLocation = SceneTarget & { nodeId: NodeId };

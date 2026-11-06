@@ -2,82 +2,74 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-06 22:30
+**Updated:** 2026-11-06 22:45
 
 ## Current milestone
 
-Core editor vertical slice (D2) is built and browser-verified. The pixel-for-pixel
-Framer shell is working: insert, select, move, resize, text edit, layers, pages,
-responsive breakpoints, undo/redo, assets, preview, publish and persistence.
+The core editor is built and browser-verified. The component slice (create,
+instances, component edit mode, variants) is built and browser-verified.
+Property controls are the next sub-slice.
 
 ## Areas
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Repository | done | Public `morewebs/WebFM`, AGPL-3.0, CI green on `main`. |
-| Scaffold | done | npm workspaces, strict TypeScript, Vitest, Biome. |
-| Document model | done | Types, defaults, tree, operations, Immer patch history, 40 tests. |
-| Renderer | done | Shared DOM renderer; editor inline styles, publish CSS + media queries; editor bundle has no server code. |
+| Document model | done | Types, defaults, tree, operations, history, component targets/ops. |
+| Renderer | done | Shared DOM renderer; editor inline styles, publish CSS + media queries; component defaults/bindings, instance size, nested guard. |
 | Server | done | Fastify API, filesystem stores, atomic saves, optimistic concurrency, publish artifacts + zip. |
-| Publishing | done | `PublishAdapter`, static exporter, document wrapper, assets, routes, zip. |
-| Editor plumbing | done | API client, Zustand store, autosave, 409 handling, shortcuts. |
-| Editor shell | done | Framer 3.0 geometry, extracted Inter UI font, extracted chrome SVGs. |
-| Canvas | done | Select, hover, move, 8-handle resize, text edit, draw tools, zoom/pan, nudges. |
-| Panels | done | Layers (tree, rename, hide/lock, DnD), Pages (add/switch/rename), Assets, Properties, Insert, menus, Publish dialog, Preview. |
-| Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides verified; add/remove UI not built. |
-| Assets | done | Upload API + panel listing + image insertion + publish copy verified. File picker handoff blocked by Chrome extension setting. |
-| Framer reference | done for core | 74 screenshots; computed tokens and 23 extracted SVG glyphs + fonts. |
-| Manual verification | done for core | See verified list below. |
+| Publishing | done | `PublishAdapter`, static exporter, assets, routes, zip; component instances render. |
+| Editor plumbing | done | API client, store, autosave, 409 handling, shortcuts, component edit mode. |
+| Editor shell | done | Exact Framer 3.0 geometry (51px top bar, 260px panels), extracted Inter UI font and chrome SVGs. |
+| Canvas | done | Select, move, resize, text edit, draw tools, zoom/pan, breakpoint bar states, component stage and bar. |
+| Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
+| Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides verified; add/remove not built. |
+| Components | done (core) | Create from layer, instances, edit master, variants, defaults/bindings in the model+renderer. Property-control UI next. |
+| Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
+| Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
+| Manual verification | done for core+components | See verified list below. |
 
-## Verified in Chrome (WebFM at 127.0.0.1:5173)
+## Verified in Chrome
 
-- Shell loads a project and renders the 1200x1000 white page; panels match the
-  Framer reference geometry and typography.
-- Layer selection shows the full Style panel (Template, Breakpoint, Layout,
-  Typography, Overlays, Cursor, Effects, Styles, Code overrides).
-- Frame insert with F + drag; move; 8-handle resize; undo restores each gesture.
-- Text insert with T + click; double-click edit commits on Enter/blur.
-- Stack insert from the layout flyout; Layout section reads Stack/Vertical.
-- Breakpoint switch Desktop/Tablet/Phone; tablet move writes an override while
-  desktop keeps its own position and tablet restores its override.
-- Pages: add page, switch Home/New Page, layers restore per page.
-- Insert menu: Elements/CMS categories, icon-library grid, Media image insert.
-- Asset upload through the API, asset card, image insertion, publish copies the
-  asset into `assets/` and references it from `index.html`.
-- Publish dialog returns a 2-file artifact for the blank page and a 4-file
-  artifact with the asset; `styles.css` has the breakpoint media query.
-- Preview overlay renders the page with a breakpoint selector.
-- Reload preserves frames, text, stack, pages and the asset.
+- Shell geometry matches the reference: 51px top bar, 260px sidebars, page at
+  x360/y211, neutral #212121 breakpoint bar, exact canvas offsets.
+- Layer selection shows the full Style panel; no selection shows Typography +
+  Template; instance selection shows Component + Breakpoint + Overrides.
+- Frame insert with F + drag; move; resize; text insert/edit; undo.
+- Breakpoint switch; tablet edits override while desktop keeps its position.
+- Pages add/switch; layer trees restore per page.
+- Assets: image upload via API, asset card, image insertion, publish copy.
+- Publish dialog and static export; preview overlay; reload persistence.
+- Components: create from a frame with Ctrl+Alt+K, component edit mode shows
+  the ComponentBar and variant root; master text edit commits; Back to page
+  selects the instance; Add variant; instance variant switch changes rendered
+  content; second instance inserted from Assets; publish renders both instances
+  with their variant content.
 
-- Bugs found and fixed during verification: detached `fetch` binding
-  (Illegal invocation), document text using the unaliased `Inter` family,
-  responsive merge wiping `layout.mode` fields (crashed the Stack inspector),
-  new pages missing tablet/phone root overrides.
+- Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
+  font, responsive merge wiping layout fields, new pages missing breakpoint
+  overrides, breakpoint bar always blue, 1px shell offsets, variant node ids
+  (now shared across variants).
 
 ## Next
 
-1. Commit this integrated slice on `build/core` and merge to `main` when green.
-2. Components + variants + property controls (D3 next slice).
-3. Interactions, then code components, then CMS.
-4. Add/remove custom breakpoints; alignment actions; auto-rename text layers.
+1. Property controls: add/expose/bind in component edit mode; instance controls;
+   purple override state; default-variant action.
+2. Interactions (appear/scroll/hover/tap) after components.
+3. Code components, then CMS.
+4. Add/remove custom breakpoints; alignment actions; text auto-rename.
 5. Cloud/auth design discussion (deferred).
-
-## Blocked / deferred
-
-- Cloud deployment and auth (D4, D11, D12).
-- Browser file-picker handoff: the Chrome extension's "Allow access to file
-  URLs" is off; the user's decision. The same upload path is verified via the API.
-- Components, interactions, code components, CMS, effects, comments, multiplayer,
-  hosting: later slices.
-- Alignment toolbar buttons are present but disabled until alignment operations
-  exist.
 
 ## Known limits
 
-- Page background editing was removed from the no-selection panel to match
-  Framer's Typography/Template panel; the page background is still white by
-  default and editable only through the document/API today.
-- Text layers do not auto-rename when their content changes.
-- Static exports use root-absolute asset URLs, so hosting under a subpath would
-  need a base-path option.
+- Static publish shares component child class names across instances/variants;
+  per-instance class scoping is a follow-up (editor is unaffected).
+- Component create/insert is page-only; nested component creation from the UI is
+  disabled.
+- Instances inherit master layout/typography/style; only position and size are
+  instance-owned until overrides land.
+- Page background editing is not exposed in the no-selection panel (matches
+  Framer's Typography/Template panel).
+- Text layers do not auto-rename with content.
+- Static exports use root-absolute asset URLs (no base-path option yet).
 - Extracted Framer assets carry redistribution risk (D17).

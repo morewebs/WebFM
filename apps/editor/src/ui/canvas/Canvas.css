@@ -26,10 +26,35 @@
   -webkit-user-select: none;
 }
 
+/* ------------------------------------------------------- component stage */
+
+/* Component edit mode renders the variant root on a white page-like stage at
+   the active breakpoint width. The root keeps its own size; it never changes
+   the stage width. */
+.wfm-canvas-component-page {
+  position: relative;
+  background: #fff;
+}
+
 /* --------------------------------------------------------- breakpoint bar */
 
 .wfm-breakpoint-bar {
   text-align: left;
+  padding: 0 5px 0 0;
+  gap: 5px;
+}
+
+.wfm-breakpoint-bar:not(.is-selected) {
+  color: #999;
+}
+
+.wfm-breakpoint-bar:not(.is-selected) .wfm-breakpoint-bar__width {
+  color: #777;
+}
+
+.wfm-breakpoint-bar:not(.is-selected) .wfm-breakpoint-bar__glyph {
+  background: #2a2a2a;
+  color: #999;
 }
 
 .wfm-breakpoint-bar__main {
@@ -38,28 +63,23 @@
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: inherit;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 550;
   text-align: left;
   overflow: hidden;
 }
 
 .wfm-breakpoint-bar__glyph {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 3px;
+  border-radius: var(--wfm-radius);
   background: var(--wfm-accent);
-  color: #0b0f13;
-}
-
-.wfm-breakpoint-bar__glyph svg {
-  fill: currentColor;
-  stroke: none;
+  color: #fff;
 }
 
 .wfm-breakpoint-bar__name {

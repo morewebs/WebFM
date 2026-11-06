@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { activePageOf, useProjectStore } from "../../state/project-store";
+import { activeSceneOf, useProjectStore } from "../../state/project-store";
 import { Icon, type IconName } from "../icons";
 import { useUIStore } from "../ui-store";
 import "./MainMenu.css";
@@ -67,6 +67,13 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
   const insertNode = useProjectStore((state) => state.insertNode);
   const updateBox = useProjectStore((state) => state.updateBox);
   const updateText = useProjectStore((state) => state.updateText);
+  const editingComponent = useProjectStore((state) => state.editingComponent);
+  const createComponentFromSelection = useProjectStore(
+    (state) => state.createComponentFromSelection,
+  );
+  const enterComponent = useProjectStore((state) => state.enterComponent);
+  const exitComponent = useProjectStore((state) => state.exitComponent);
+  const addComponentVariant = useProjectStore((state) => state.addComponentVariant);
 
   useEffect(() => {
     const handlePointer = (event: PointerEvent): void => {
@@ -91,9 +98,22 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
     };
   }, [onClose]);
 
-  const page = activePageOf(project, activePageId);
+  const scene = activeSceneOf(project, activePageId, editingComponent);
   const selectedId = selection[0];
-  const selectedNode = page && selectedId ? findNode(page.root, selectedId) : null;
+  const selectedNode = scene && selectedId ? findNode(scene.root, selectedId) : null;
+  const singleSelectedNode = selection.length === 1 ? selectedNode : null;
+  const selectedIsSceneRoot =
+    scene !== null && selectedId !== undefined && selectedId === scene.root.id;
+  const canCreateComponent =
+    scene?.kind === "page" && singleSelectedNode !== null && !selectedIsSceneRoot;
+  const createComponentReason = !singleSelectedNode
+    ? "Select a single layer"
+    : scene?.kind === "component"
+      ? "Exit the component to create another"
+      : selectedIsSceneRoot
+        ? "The page root cannot become a component"
+        : "Select a single layer";
+  const instanceNode = singleSelectedNode?.type === "componentInstance" ? singleSelectedNode : null;
   const selectedText = selectedNode?.type === "text" ? selectedNode : null;
   const textProps =
     selectedText && project
@@ -458,41 +478,51 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
           entries: [
             {
               id: "create-component",
-              label: "Create component…",
-              shortcut: "Ctrl+Alt+K",
-              disabled: true,
-              reason: "Components are not in this build",
+              label: "Create Component",
+              shortcut: "Cmd+Alt+K",
+              action: () => {
+                createComponentFromSelection();
+              },
+              disabled: !canCreateComponent,
+              reason: createComponentReason,
+            },
+            {
+              id: "edit-main-component",
+              label: "Edit Main Component",
+              action: () => {
+                if (!instanceNode) return;
+                enterComponent(
+                  instanceNode.componentId,
+                  instanceNode.variantId ?? undefined,
+                  instanceNode.id,
+                );
+              },
+              disabled: instanceNode === null,
+              reason: "Select a component instance",
+            },
+            {
+              id: "add-variant",
+              label: "Add Variant",
+              action: () => {
+                addComponentVariant();
+              },
+              disabled: editingComponent === null,
+              reason: "Edit a component first",
+            },
+            {
+              id: "back-to-page",
+              label: "Back to Page",
+              shortcut: "Alt+Esc",
+              action: exitComponent,
+              disabled: editingComponent === null,
+              reason: "Not editing a component",
             },
             {
               id: "create-from-code",
               label: "Create from code…",
               shortcut: "Ctrl+Shift+K",
               disabled: true,
-              reason: "Components are not in this build",
-            },
-            {
-              id: "show-primary",
-              label: "Show primary",
-              disabled: true,
-              reason: "Components are not in this build",
-            },
-            {
-              id: "detach-primary",
-              label: "Detach from primary",
-              disabled: true,
-              reason: "Components are not in this build",
-            },
-            {
-              id: "update-primary",
-              label: "Update primary from instance",
-              disabled: true,
-              reason: "Components are not in this build",
-            },
-            {
-              id: "reset-overrides",
-              label: "Reset overrides",
-              disabled: true,
-              reason: "Components are not in this build",
+              reason: "Code components are not in this build",
             },
           ],
         },

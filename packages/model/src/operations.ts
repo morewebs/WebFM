@@ -3,36 +3,135 @@
  *
  * Every operation mutates an Immer draft, so the editor can wrap any of them in
  * `produce`/`produceWithPatches` and history comes for free. Operations throw a
- * descriptive error when they are handed a page, node, parent or breakpoint
- * that does not exist.
+ * descriptive error when they are handed a page, component, variant, node,
+ * parent or breakpoint that does not exist.
+ *
+ * Node operations accept a `SceneTarget`, which addresses either a page or one
+ * component variant. Page-based calls keep the old `{ pageId, nodeId }` shape.
  */
 
 import { castDraft, current, type Draft, isDraft } from "immer";
-import { createPage, mergeDeep } from "./defaults";
+import {
+  createComponentDefinition,
+  createFrame,
+  createPage,
+  createResponsive,
+  mergeDeep,
+} from "./defaults";
 import { createId } from "./ids";
+import { findComponentInstances } from "./tree";
 import type {
   BoxProps,
   BreakpointId,
+  ComponentDefinition,
+  ComponentId,
+  ComponentInstanceNode,
+  ComponentProperty,
+  ComponentPropertyValue,
+  ComponentVariant,
   DeepPartial,
   Fill,
   FrameNode,
   ImageProps,
   NodeId,
+  NodeLocation,
   Page,
   PageId,
   Project,
+  PropertyBinding,
+  PropertyId,
   PublishConfig,
+  Responsive,
   SceneNode,
+  SceneTarget,
   TextProps,
+  VariantId,
 } from "./types";
 
-/** A node is addressed by the page that contains it plus its id. */
-interface NodeRef {
-  pageId: PageId;
-  nodeId: NodeId;
+/** `Omit` over a discriminated union, keeping each member's own fields. */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** Input for `addComponentProperty`: a property without (or with) an id. */
+export type ComponentPropertyInput = DistributiveOmit<ComponentProperty, "id"> & {
+  id?: PropertyId;
+};
+
+/* ------------------------------------------------------------------ targets */
+
+type PageTarget = Extract<SceneTarget, { pageId: PageId }>;
+
+function isPageTarget(target: SceneTarget): target is PageTarget {
+  return "pageId" in target && target.pageId !== undefined;
 }
 
-/* --------------------------------------------------------------- draft tree */
+function getComponentOrThrow(
+  project: Draft<Project>,
+  componentId: ComponentId,
+): Draft<ComponentDefinition> {
+  const component = project.components.find((candidate) => candidate.id === componentId);
+  if (!component) throw new Error(`Component "${componentId}" was not found.`);
+  return component;
+}
+
+/** Resolves a variant, falling back to the default variant then the first one. */
+function resolveVariantOrThrow(
+  project: Draft<Project>,
+  componentId: ComponentId,
+  variantId?: VariantId,
+): { component: Draft<ComponentDefinition>; variant: Draft<ComponentVariant> } {
+  const component = getComponentOrThrow(project, componentId);
+  if (component.variants.length === 0) {
+    throw new Error(`Component "${componentId}" has no variants.`);
+  }
+
+  const variant =
+    variantId !== undefined
+      ? component.variants.find((candidate) => candidate.id === variantId)
+      : (component.variants.find((candidate) => candidate.id === component.defaultVariantId) ??
+        component.variants[0]);
+
+  if (!variant) {
+    throw new Error(`Variant "${variantId}" was not found in component "${componentId}".`);
+  }
+  return { component, variant };
+}
+
+/**
+ * The root frame addressed by a target: the page root, or the selected component
+ * variant root (the default variant when `variantId` is omitted).
+ */
+export function getTargetRoot(project: Draft<Project>, target: SceneTarget): Draft<FrameNode> {
+  if (isPageTarget(target)) {
+    return getPageOrThrow(project, target.pageId).root;
+  }
+  return resolveVariantOrThrow(project, target.componentId, target.variantId).variant.root;
+}
+
+function describeTarget(project: Draft<Project>, target: SceneTarget): string {
+  if (isPageTarget(target)) return `page "${target.pageId}"`;
+  const { variant } = resolveVariantOrThrow(project, target.componentId, target.variantId);
+  return `component "${target.componentId}" variant "${variant.id}"`;
+}
+
+function describeRootNode(target: SceneTarget): string {
+  return isPageTarget(target) ? "page root" : "component variant root";
+}
+
+/** Finds a node inside the target, naming the page/component/variant on failure. */
+export function getTargetNodeOrThrow(
+  project: Draft<Project>,
+  target: SceneTarget,
+  nodeId: NodeId,
+): Draft<SceneNode> {
+  const root = getTargetRoot(project, target);
+  const node = findNodeDraft(root, nodeId);
+  if (!node) {
+    throw new Error(`Node "${nodeId}" was not found in ${describeTarget(project, target)}.`);
+  }
+  return node;
+}
+
+/* -------------------------------------------------------------- draft tree */
 
 function getPageOrThrow(project: Draft<Project>, pageId: PageId): Draft<Page> {
   const page = project.pages.find((candidate) => candidate.id === pageId);
@@ -62,13 +161,6 @@ function findParentDraft(root: Draft<SceneNode>, nodeId: NodeId): Draft<FrameNod
   return null;
 }
 
-function getNodeOrThrow(project: Draft<Project>, pageId: PageId, nodeId: NodeId): Draft<SceneNode> {
-  const page = getPageOrThrow(project, pageId);
-  const node = findNodeDraft(page.root, nodeId);
-  if (!node) throw new Error(`Node "${nodeId}" was not found in page "${pageId}".`);
-  return node;
-}
-
 function subtreeContains(node: Draft<SceneNode>, nodeId: NodeId): boolean {
   if (node.id === nodeId) return true;
   if (node.type === "frame") {
@@ -85,10 +177,23 @@ function clampIndex(index: number | undefined, length: number): number {
   return Math.max(0, Math.min(Math.trunc(index), length));
 }
 
+/** Deep-copies JSON data, unwrapping Immer drafts at every level. */
+function toPlain<T>(value: T): T {
+  if (isDraft(value)) return toPlain(current(value as Draft<T>)) as T;
+  if (Array.isArray(value)) return value.map((entry) => toPlain(entry)) as T;
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = toPlain(entry);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 /** Copies a node without attaching it to a draft, so the caller's object is not frozen. */
 function detachNode(node: SceneNode): SceneNode {
-  const source = isDraft(node) ? current(node as Draft<SceneNode>) : node;
-  return structuredClone(source);
+  return toPlain(node);
 }
 
 function assignFreshIds(node: SceneNode): void {
@@ -98,7 +203,7 @@ function assignFreshIds(node: SceneNode): void {
   }
 }
 
-function cloneWithFreshIds(node: SceneNode): SceneNode {
+function cloneWithFreshIds<T extends SceneNode>(node: T): T {
   const copy = structuredClone(node);
   assignFreshIds(copy);
   return copy;
@@ -146,195 +251,578 @@ function writeResponsive<P extends object>(
   node.responsive.overrides[breakpointId] = mergeDeep<P>(existing, patch) as DeepPartial<P>;
 }
 
-/* -------------------------------------------------------------------- nodes */
+/* --------------------------------------------------------------------- nodes */
 
 export function insertNode(
   draft: Draft<Project>,
-  {
-    pageId,
-    parentId,
-    node,
-    index,
-  }: { pageId: PageId; parentId: NodeId; node: SceneNode; index?: number },
+  options: SceneTarget & { parentId: NodeId; node: SceneNode; index?: number },
 ): void {
-  const page = getPageOrThrow(draft, pageId);
-  const parent = findNodeDraft(page.root, parentId);
+  const root = getTargetRoot(draft, options);
+  const parent = findNodeDraft(root, options.parentId);
   if (!parent) {
-    throw new Error(`Parent node "${parentId}" was not found in page "${pageId}".`);
+    throw new Error(
+      `Parent node "${options.parentId}" was not found in ${describeTarget(draft, options)}.`,
+    );
   }
   if (parent.type !== "frame") {
     throw new Error(
-      `Cannot insert into node "${parentId}" of type "${parent.type}"; the parent must be a frame.`,
+      `Cannot insert into node "${options.parentId}" of type "${parent.type}"; the parent must be a frame.`,
     );
   }
 
-  const at = clampIndex(index, parent.children.length);
-  parent.children.splice(at, 0, castDraft(detachNode(node)));
+  const at = clampIndex(options.index, parent.children.length);
+  parent.children.splice(at, 0, castDraft(detachNode(options.node)));
 }
 
-export function removeNode(draft: Draft<Project>, { pageId, nodeId }: NodeRef): void {
-  const page = getPageOrThrow(draft, pageId);
-  const node = findNodeDraft(page.root, nodeId);
-  if (!node) throw new Error(`Node "${nodeId}" was not found in page "${pageId}".`);
-  if (node.id === page.root.id) {
-    throw new Error(`Cannot remove the page root node "${nodeId}".`);
+export function removeNode(draft: Draft<Project>, location: NodeLocation): void {
+  const root = getTargetRoot(draft, location);
+  const node = findNodeDraft(root, location.nodeId);
+  if (!node) {
+    throw new Error(`Node "${location.nodeId}" was not found in ${describeTarget(draft, location)}.`);
+  }
+  if (node.id === root.id) {
+    throw new Error(`Cannot remove the ${describeRootNode(location)} node "${location.nodeId}".`);
   }
 
-  const parent = findParentDraft(page.root, nodeId);
-  if (!parent) throw new Error(`Cannot remove node "${nodeId}": it has no parent.`);
-  const index = parent.children.findIndex((child) => child.id === nodeId);
-  if (index === -1) throw new Error(`Node "${nodeId}" is not a child of its parent.`);
+  const parent = findParentDraft(root, location.nodeId);
+  if (!parent) throw new Error(`Cannot remove node "${location.nodeId}": it has no parent.`);
+  const index = parent.children.findIndex((child) => child.id === location.nodeId);
+  if (index === -1) throw new Error(`Node "${location.nodeId}" is not a child of its parent.`);
   parent.children.splice(index, 1);
 }
 
 export function moveNode(
   draft: Draft<Project>,
-  {
-    pageId,
-    nodeId,
-    parentId,
-    index,
-  }: { pageId: PageId; nodeId: NodeId; parentId: NodeId; index?: number },
+  options: NodeLocation & { parentId: NodeId; index?: number },
 ): void {
-  const page = getPageOrThrow(draft, pageId);
-  const node = findNodeDraft(page.root, nodeId);
-  if (!node) throw new Error(`Node "${nodeId}" was not found in page "${pageId}".`);
+  const root = getTargetRoot(draft, options);
+  const node = findNodeDraft(root, options.nodeId);
+  if (!node) {
+    throw new Error(`Node "${options.nodeId}" was not found in ${describeTarget(draft, options)}.`);
+  }
 
-  const oldParent = findParentDraft(page.root, nodeId);
-  if (!oldParent) throw new Error(`Cannot move the page root node "${nodeId}".`);
+  const oldParent = findParentDraft(root, options.nodeId);
+  if (!oldParent) {
+    throw new Error(`Cannot move the ${describeRootNode(options)} node "${options.nodeId}".`);
+  }
 
-  const newParent = findNodeDraft(page.root, parentId);
+  const newParent = findNodeDraft(root, options.parentId);
   if (!newParent) {
-    throw new Error(`Parent node "${parentId}" was not found in page "${pageId}".`);
+    throw new Error(
+      `Parent node "${options.parentId}" was not found in ${describeTarget(draft, options)}.`,
+    );
   }
   if (newParent.type !== "frame") {
     throw new Error(
-      `Cannot move into node "${parentId}" of type "${newParent.type}"; the parent must be a frame.`,
+      `Cannot move into node "${options.parentId}" of type "${newParent.type}"; the parent must be a frame.`,
     );
   }
-  if (subtreeContains(node, parentId)) {
+  if (subtreeContains(node, options.parentId)) {
     throw new Error(
-      `Cannot move node "${nodeId}" into itself or one of its descendants ("${parentId}").`,
+      `Cannot move node "${options.nodeId}" into itself or one of its descendants ("${options.parentId}").`,
     );
   }
 
-  const oldIndex = oldParent.children.findIndex((child) => child.id === nodeId);
-  if (oldIndex === -1) throw new Error(`Node "${nodeId}" is not a child of its parent.`);
+  const oldIndex = oldParent.children.findIndex((child) => child.id === options.nodeId);
+  if (oldIndex === -1) throw new Error(`Node "${options.nodeId}" is not a child of its parent.`);
   oldParent.children.splice(oldIndex, 1);
 
   // The index is interpreted after removal, in the target parent's final list.
-  const at = clampIndex(index, newParent.children.length);
+  const at = clampIndex(options.index, newParent.children.length);
   newParent.children.splice(at, 0, node);
 }
 
-export function duplicateNode(draft: Draft<Project>, { pageId, nodeId }: NodeRef): NodeId {
-  const page = getPageOrThrow(draft, pageId);
-  const node = findNodeDraft(page.root, nodeId);
-  if (!node) throw new Error(`Node "${nodeId}" was not found in page "${pageId}".`);
+export function duplicateNode(draft: Draft<Project>, location: NodeLocation): NodeId {
+  const root = getTargetRoot(draft, location);
+  const node = findNodeDraft(root, location.nodeId);
+  if (!node) {
+    throw new Error(`Node "${location.nodeId}" was not found in ${describeTarget(draft, location)}.`);
+  }
 
-  const parent = findParentDraft(page.root, nodeId);
-  if (!parent) throw new Error(`Cannot duplicate the page root node "${nodeId}".`);
+  const parent = findParentDraft(root, location.nodeId);
+  if (!parent) {
+    throw new Error(`Cannot duplicate the ${describeRootNode(location)} node "${location.nodeId}".`);
+  }
 
-  const index = parent.children.findIndex((child) => child.id === nodeId);
-  if (index === -1) throw new Error(`Node "${nodeId}" is not a child of its parent.`);
+  const index = parent.children.findIndex((child) => child.id === location.nodeId);
+  if (index === -1) throw new Error(`Node "${location.nodeId}" is not a child of its parent.`);
 
-  const clone = cloneWithFreshIds(current(node) as SceneNode);
+  const clone = cloneWithFreshIds(detachNode(node));
   parent.children.splice(index + 1, 0, castDraft(clone));
   return clone.id;
 }
 
 export function updateNode(
   draft: Draft<Project>,
-  { pageId, nodeId }: NodeRef,
+  location: NodeLocation,
   updater: (node: Draft<SceneNode>) => void,
 ): void {
-  updater(getNodeOrThrow(draft, pageId, nodeId));
+  updater(getTargetNodeOrThrow(draft, location, location.nodeId));
 }
 
 export function updateBoxProps(
   draft: Draft<Project>,
-  {
-    pageId,
-    nodeId,
-    breakpointId,
-    patch,
-  }: {
-    pageId: PageId;
-    nodeId: NodeId;
-    breakpointId: BreakpointId;
-    patch: DeepPartial<BoxProps>;
-  },
+  options: NodeLocation & { breakpointId: BreakpointId; patch: DeepPartial<BoxProps> },
 ): void {
-  const node = getNodeOrThrow(draft, pageId, nodeId);
-  writeResponsive(draft, node as { responsive: ResponsiveDraft<BoxProps> }, breakpointId, patch);
+  const node = getTargetNodeOrThrow(draft, options, options.nodeId);
+  writeResponsive(
+    draft,
+    node as { responsive: ResponsiveDraft<BoxProps> },
+    options.breakpointId,
+    options.patch,
+  );
 }
 
 export function updateTextProps(
   draft: Draft<Project>,
-  {
-    pageId,
-    nodeId,
-    breakpointId,
-    patch,
-  }: {
-    pageId: PageId;
-    nodeId: NodeId;
-    breakpointId: BreakpointId;
-    patch: DeepPartial<TextProps>;
-  },
+  options: NodeLocation & { breakpointId: BreakpointId; patch: DeepPartial<TextProps> },
 ): void {
-  const node = getNodeOrThrow(draft, pageId, nodeId);
+  const node = getTargetNodeOrThrow(draft, options, options.nodeId);
   if (node.type !== "text") {
-    throw new Error(`Node "${nodeId}" is a ${node.type}; expected a text node.`);
+    throw new Error(`Node "${options.nodeId}" is a ${node.type}; expected a text node.`);
   }
-  writeResponsive(draft, node, breakpointId, patch);
+  writeResponsive(draft, node, options.breakpointId, options.patch);
 }
 
 export function updateImageProps(
   draft: Draft<Project>,
-  {
-    pageId,
-    nodeId,
-    breakpointId,
-    patch,
-  }: {
-    pageId: PageId;
-    nodeId: NodeId;
-    breakpointId: BreakpointId;
-    patch: DeepPartial<ImageProps>;
-  },
+  options: NodeLocation & { breakpointId: BreakpointId; patch: DeepPartial<ImageProps> },
 ): void {
-  const node = getNodeOrThrow(draft, pageId, nodeId);
+  const node = getTargetNodeOrThrow(draft, options, options.nodeId);
   if (node.type !== "image") {
-    throw new Error(`Node "${nodeId}" is a ${node.type}; expected an image node.`);
+    throw new Error(`Node "${options.nodeId}" is a ${node.type}; expected an image node.`);
   }
-  writeResponsive(draft, node, breakpointId, patch);
+  writeResponsive(draft, node, options.breakpointId, options.patch);
 }
 
-export function renameNode(draft: Draft<Project>, { pageId, nodeId }: NodeRef, name: string): void {
-  const node = getNodeOrThrow(draft, pageId, nodeId);
-  node.name = name;
+export function renameNode(draft: Draft<Project>, location: NodeLocation, name: string): void {
+  getTargetNodeOrThrow(draft, location, location.nodeId).name = name;
 }
 
 export function setNodeVisible(
   draft: Draft<Project>,
-  { pageId, nodeId }: NodeRef,
+  location: NodeLocation,
   visible: boolean,
 ): void {
-  const node = getNodeOrThrow(draft, pageId, nodeId);
-  node.visible = visible;
+  getTargetNodeOrThrow(draft, location, location.nodeId).visible = visible;
 }
 
-export function setNodeLocked(
+export function setNodeLocked(draft: Draft<Project>, location: NodeLocation, locked: boolean): void {
+  getTargetNodeOrThrow(draft, location, location.nodeId).locked = locked;
+}
+
+/* ---------------------------------------------------------------- components */
+
+const BOX_PROP_KEYS = ["layout", "size", "position", "style"] as const;
+
+/** Copies only the four BoxProps fields that exist on a node's props. */
+function pickBoxFields(source: object): Partial<BoxProps> {
+  const out: Record<string, unknown> = {};
+  for (const key of BOX_PROP_KEYS) {
+    const value = (source as Record<string, unknown>)[key];
+    if (value !== undefined) out[key] = structuredClone(value);
+  }
+  return out as Partial<BoxProps>;
+}
+
+/** A box-only copy of a node's responsive value, stripping text/image props. */
+function boxOnlyResponsive(source: {
+  base: object;
+  overrides: Record<string, object | undefined>;
+}): Responsive<BoxProps> {
+  const overrides: Record<BreakpointId, DeepPartial<BoxProps>> = {};
+  for (const [breakpointId, override] of Object.entries(source.overrides)) {
+    if (override === undefined) continue;
+    overrides[breakpointId] = pickBoxFields(override) as DeepPartial<BoxProps>;
+  }
+  return {
+    base: pickBoxFields(source.base) as BoxProps,
+    overrides,
+  };
+}
+
+/** Resets a variant root's position to the origin at every breakpoint. */
+function resetPosition(node: SceneNode): void {
+  node.responsive.base.position = { ...node.responsive.base.position, x: 0, y: 0 };
+  for (const override of Object.values(node.responsive.overrides)) {
+    if (override.position !== undefined) {
+      override.position = { ...override.position, x: 0, y: 0 };
+    }
+  }
+}
+
+function uniqueVariantName(
+  component: { variants: Array<{ name: string }> },
+  requested?: string,
+): string {
+  const taken = (candidate: string): boolean =>
+    component.variants.some((variant) => variant.name === candidate);
+  const trimmed = requested?.trim();
+  if (trimmed !== undefined && trimmed.length > 0) {
+    if (!taken(trimmed)) return trimmed;
+    let suffix = 2;
+    while (taken(`${trimmed} ${suffix}`)) suffix += 1;
+    return `${trimmed} ${suffix}`;
+  }
+
+  let suffix = component.variants.length + 1;
+  while (taken(`Variant ${suffix}`)) suffix += 1;
+  return `Variant ${suffix}`;
+}
+
+export function createComponentFromNode(
   draft: Draft<Project>,
-  { pageId, nodeId }: NodeRef,
-  locked: boolean,
-): void {
-  const node = getNodeOrThrow(draft, pageId, nodeId);
-  node.locked = locked;
+  options: { pageId: PageId; nodeId: NodeId; name?: string },
+): { componentId: ComponentId; variantId: VariantId; instanceId: NodeId } {
+  const page = getPageOrThrow(draft, options.pageId);
+  const node = findNodeDraft(page.root, options.nodeId);
+  if (!node) {
+    throw new Error(`Node "${options.nodeId}" was not found in page "${options.pageId}".`);
+  }
+  if (node.id === page.root.id) {
+    throw new Error(`Cannot create a component from the page root node "${options.nodeId}".`);
+  }
+
+  const parent = findParentDraft(page.root, options.nodeId);
+  if (!parent) {
+    throw new Error(`Cannot create a component from node "${options.nodeId}": it has no parent.`);
+  }
+  const index = parent.children.findIndex((child) => child.id === options.nodeId);
+  if (index === -1) throw new Error(`Node "${options.nodeId}" is not a child of its parent.`);
+
+  const original = detachNode(node);
+  const componentName = options.name?.trim() || original.name || "Component";
+
+  const clone = cloneWithFreshIds(original);
+  let variantRoot: FrameNode;
+  if (clone.type === "frame") {
+    resetPosition(clone);
+    variantRoot = clone;
+  } else {
+    // Text, images and other leaves become the child of a hug-sized wrapper.
+    resetPosition(clone);
+    variantRoot = createFrame({
+      name: componentName,
+      props: {
+        layout: { mode: "none" },
+        size: { width: { mode: "hug" }, height: { mode: "hug" } },
+        style: { fill: null },
+      },
+      children: [clone],
+    });
+  }
+
+  const component = createComponentDefinition({ name: componentName, root: variantRoot });
+  draft.components.push(castDraft(component));
+
+  const instance: ComponentInstanceNode = {
+    id: createId("node"),
+    type: "componentInstance",
+    name: componentName,
+    visible: original.visible,
+    locked: original.locked,
+    responsive: boxOnlyResponsive(original.responsive),
+    componentId: component.id,
+    variantId: component.defaultVariantId,
+    propertyValues: {},
+  };
+  parent.children[index] = castDraft(instance);
+
+  return {
+    componentId: component.id,
+    variantId: component.defaultVariantId,
+    instanceId: instance.id,
+  };
 }
 
-/* -------------------------------------------------------------------- pages */
+export function insertComponentInstance(
+  draft: Draft<Project>,
+  options: {
+    pageId: PageId;
+    parentId: NodeId;
+    componentId: ComponentId;
+    variantId?: VariantId;
+    index?: number;
+    position?: { x: number; y: number };
+  },
+): NodeId {
+  const { component, variant } = resolveVariantOrThrow(
+    draft,
+    options.componentId,
+    options.variantId,
+  );
+  const base = structuredClone(unwrapDraft(variant.root.responsive.base));
+
+  const instance: ComponentInstanceNode = {
+    id: createId("node"),
+    type: "componentInstance",
+    name: component.name,
+    visible: true,
+    locked: false,
+    responsive: createResponsive({
+      ...base,
+      position: options.position ? { ...options.position } : { x: 0, y: 0 },
+    }),
+    componentId: component.id,
+    variantId: variant.id,
+    propertyValues: {},
+  };
+
+  insertNode(draft, {
+    pageId: options.pageId,
+    parentId: options.parentId,
+    node: instance,
+    index: options.index,
+  });
+  return instance.id;
+}
+
+export function addComponentVariant(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; name?: string; fromVariantId?: VariantId },
+): VariantId {
+  const component = getComponentOrThrow(draft, options.componentId);
+  if (component.variants.length === 0) {
+    throw new Error(`Component "${options.componentId}" has no variants.`);
+  }
+
+  const source =
+    options.fromVariantId !== undefined
+      ? component.variants.find((variant) => variant.id === options.fromVariantId)
+      : (component.variants.find((variant) => variant.id === component.defaultVariantId) ??
+        component.variants[0]);
+  if (!source) {
+    throw new Error(
+      `Variant "${options.fromVariantId}" was not found in component "${options.componentId}".`,
+    );
+  }
+
+  const variant: ComponentVariant = {
+    id: createId("variant"),
+    name: uniqueVariantName(component, options.name),
+    // Variants share node ids with the source variant: corresponding layers keep
+    // their identity across variants so component-wide bindings resolve in all
+    // of them. The variant itself gets a fresh id.
+    root: structuredClone(detachNode(source.root) as FrameNode),
+  };
+  component.variants.push(castDraft(variant));
+  return variant.id;
+}
+
+export function renameComponentVariant(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; variantId: VariantId; name: string },
+): void {
+  const component = getComponentOrThrow(draft, options.componentId);
+  const trimmed = options.name.trim();
+  if (trimmed.length === 0) throw new Error("Variant name cannot be empty.");
+
+  const variant = component.variants.find((candidate) => candidate.id === options.variantId);
+  if (!variant) {
+    throw new Error(
+      `Variant "${options.variantId}" was not found in component "${options.componentId}".`,
+    );
+  }
+  if (
+    component.variants.some(
+      (candidate) => candidate.id !== options.variantId && candidate.name === trimmed,
+    )
+  ) {
+    throw new Error(
+      `A variant named "${trimmed}" already exists in component "${options.componentId}".`,
+    );
+  }
+  variant.name = trimmed;
+}
+
+export function setComponentDefaultVariant(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; variantId: VariantId },
+): void {
+  const component = getComponentOrThrow(draft, options.componentId);
+  if (!component.variants.some((variant) => variant.id === options.variantId)) {
+    throw new Error(
+      `Variant "${options.variantId}" was not found in component "${options.componentId}".`,
+    );
+  }
+  component.defaultVariantId = options.variantId;
+}
+
+export function deleteComponentVariant(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; variantId: VariantId },
+): void {
+  const component = getComponentOrThrow(draft, options.componentId);
+  if (component.variants.length <= 1) {
+    throw new Error(`Cannot delete the last variant of component "${options.componentId}".`);
+  }
+  const index = component.variants.findIndex((variant) => variant.id === options.variantId);
+  if (index === -1) {
+    throw new Error(
+      `Variant "${options.variantId}" was not found in component "${options.componentId}".`,
+    );
+  }
+
+  const [removed] = component.variants.splice(index, 1);
+  if (removed && component.defaultVariantId === removed.id) {
+    component.defaultVariantId = component.variants[0]!.id;
+  }
+}
+
+export function renameComponent(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; name: string },
+): void {
+  const trimmed = options.name.trim();
+  if (trimmed.length === 0) throw new Error("Component name cannot be empty.");
+  getComponentOrThrow(draft, options.componentId).name = trimmed;
+}
+
+export function deleteComponent(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId },
+): void {
+  const index = draft.components.findIndex((component) => component.id === options.componentId);
+  if (index === -1) throw new Error(`Component "${options.componentId}" was not found.`);
+  const component = draft.components[index]!;
+
+  // Instances inside this component's own variants disappear with it; every
+  // page and every other component must be free of references.
+  const references: ComponentInstanceNode[] = [];
+  for (const page of draft.pages) {
+    references.push(...findComponentInstances(page, options.componentId));
+  }
+  for (const other of draft.components) {
+    if (other.id === options.componentId) continue;
+    for (const variant of other.variants) {
+      references.push(...findComponentInstances(variant.root, options.componentId));
+    }
+  }
+
+  if (references.length > 0) {
+    throw new Error(
+      `Cannot delete component "${component.name}": ${references.length} instance(s) still reference it.`,
+    );
+  }
+  draft.components.splice(index, 1);
+}
+
+export function setInstanceVariant(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  variantId: VariantId,
+): void {
+  const node = getTargetNodeOrThrow(draft, location, location.nodeId);
+  if (node.type !== "componentInstance") {
+    throw new Error(`Node "${location.nodeId}" is a ${node.type}; expected a component instance.`);
+  }
+  const component = getComponentOrThrow(draft, node.componentId);
+  if (!component.variants.some((variant) => variant.id === variantId)) {
+    throw new Error(`Variant "${variantId}" was not found in component "${node.componentId}".`);
+  }
+  node.variantId = variantId;
+}
+
+export function setInstancePropertyValue(
+  draft: Draft<Project>,
+  location: NodeLocation,
+  propertyId: PropertyId,
+  value: ComponentPropertyValue,
+): void {
+  const node = getTargetNodeOrThrow(draft, location, location.nodeId);
+  if (node.type !== "componentInstance") {
+    throw new Error(`Node "${location.nodeId}" is a ${node.type}; expected a component instance.`);
+  }
+  const component = getComponentOrThrow(draft, node.componentId);
+  if (!component.properties.some((property) => property.id === propertyId)) {
+    throw new Error(`Property "${propertyId}" was not found on component "${node.componentId}".`);
+  }
+  node.propertyValues[propertyId] = value;
+}
+
+export function addComponentProperty(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; property: ComponentPropertyInput },
+): PropertyId {
+  const component = getComponentOrThrow(draft, options.componentId);
+  const name = options.property.name.trim();
+  if (name.length === 0) throw new Error("Component property name cannot be empty.");
+  if (component.properties.some((property) => property.name === name)) {
+    throw new Error(
+      `A component property named "${name}" already exists in component "${options.componentId}".`,
+    );
+  }
+
+  const id = options.property.id ?? createId("prop");
+  if (component.properties.some((property) => property.id === id)) {
+    throw new Error(
+      `Component property id "${id}" is already used in component "${options.componentId}".`,
+    );
+  }
+
+  const property = { ...options.property, id, name } as ComponentProperty;
+  component.properties.push(castDraft(property));
+  return id;
+}
+
+export function removeComponentProperty(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; propertyId: PropertyId },
+): void {
+  const component = getComponentOrThrow(draft, options.componentId);
+  const index = component.properties.findIndex((property) => property.id === options.propertyId);
+  if (index === -1) {
+    throw new Error(
+      `Property "${options.propertyId}" was not found on component "${options.componentId}".`,
+    );
+  }
+  component.properties.splice(index, 1);
+
+  for (let i = component.bindings.length - 1; i >= 0; i -= 1) {
+    if (component.bindings[i]!.propertyId === options.propertyId) {
+      component.bindings.splice(i, 1);
+    }
+  }
+
+  // Remove the stale value from every instance in the project.
+  for (const instance of findComponentInstances(draft, options.componentId)) {
+    delete instance.propertyValues[options.propertyId];
+  }
+}
+
+export function setComponentBinding(
+  draft: Draft<Project>,
+  options: { componentId: ComponentId; binding: PropertyBinding },
+): void {
+  const component = getComponentOrThrow(draft, options.componentId);
+  if (!component.properties.some((property) => property.id === options.binding.propertyId)) {
+    throw new Error(
+      `Property "${options.binding.propertyId}" was not found on component "${options.componentId}".`,
+    );
+  }
+
+  // Bindings are component-wide, unlike Framer's per-variant bindings, so the
+  // node must exist in every variant.
+  for (const variant of component.variants) {
+    if (!findNodeDraft(variant.root, options.binding.nodeId)) {
+      throw new Error(
+        `Cannot bind property "${options.binding.propertyId}" to node "${options.binding.nodeId}": ` +
+          `the node was not found in variant "${variant.id}" of component "${options.componentId}".`,
+      );
+    }
+  }
+
+  const index = component.bindings.findIndex(
+    (binding) => binding.propertyId === options.binding.propertyId,
+  );
+  if (index === -1) {
+    component.bindings.push(castDraft({ ...options.binding }));
+  } else {
+    component.bindings[index] = castDraft({ ...options.binding });
+  }
+}
+
+/* --------------------------------------------------------------------- pages */
 
 function normalizePagePath(path: string): string {
   const trimmed = path.trim();

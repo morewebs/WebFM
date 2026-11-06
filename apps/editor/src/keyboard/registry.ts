@@ -24,7 +24,9 @@ export type ShortcutId =
   | "show-style"
   | "preview"
   | "publish"
-  | "zoom-100";
+  | "zoom-100"
+  | "create-component"
+  | "back-to-page";
 
 export interface KeyboardEventLike {
   key: string;
@@ -62,6 +64,8 @@ export interface ShortcutActions {
   openPreview?(): void;
   openPublish?(): void;
   setZoom?(zoom: number): void;
+  createComponent?(): void;
+  backToPage?(): void;
 }
 
 export interface ShortcutBinding {
@@ -74,9 +78,7 @@ export interface ShortcutBinding {
 }
 
 /** Metadata table, exported so UI can render shortcut hints without actions. */
-export const SHORTCUT_DEFINITIONS: ReadonlyArray<
-  Pick<ShortcutBinding, "id" | "keys" | "label">
-> = [
+export const SHORTCUT_DEFINITIONS: ReadonlyArray<Pick<ShortcutBinding, "id" | "keys" | "label">> = [
   { id: "undo", keys: "Mod+Z", label: "Undo" },
   { id: "redo", keys: "Mod+Shift+Z", label: "Redo" },
   { id: "delete-selection", keys: "Delete", label: "Delete selection" },
@@ -95,6 +97,8 @@ export const SHORTCUT_DEFINITIONS: ReadonlyArray<
   { id: "preview", keys: "Mod+P", label: "Open Preview" },
   { id: "publish", keys: "Mod+Shift+P", label: "Publish Site" },
   { id: "zoom-100", keys: "Mod+0", label: "Zoom to 100%" },
+  { id: "create-component", keys: "Mod+Alt+K", label: "Create Component" },
+  { id: "back-to-page", keys: "Alt+Escape", label: "Back to page" },
 ];
 
 const IGNORED_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -168,6 +172,26 @@ export function createShortcutBindings(actions: ShortcutActions): ShortcutBindin
       label: "Zoom to 100%",
       match: (event) => hasPrimary(event) && !event.shiftKey && event.key === "0",
       run: () => actions.setZoom?.(1),
+    },
+    {
+      id: "create-component",
+      keys: "Mod+Alt+K",
+      label: "Create Component",
+      match: (event) =>
+        hasPrimary(event) && event.altKey === true && event.shiftKey !== true && key(event) === "k",
+      run: () => actions.createComponent?.(),
+    },
+    {
+      id: "back-to-page",
+      keys: "Alt+Escape",
+      label: "Back to page",
+      match: (event) =>
+        event.altKey === true &&
+        event.metaKey !== true &&
+        event.ctrlKey !== true &&
+        event.shiftKey !== true &&
+        event.key === "Escape",
+      run: () => actions.backToPage?.(),
     },
     {
       id: "show-pages",

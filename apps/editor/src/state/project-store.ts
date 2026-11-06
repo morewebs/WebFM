@@ -8,19 +8,28 @@
  */
 
 import {
+  addComponentVariant as addComponentVariantOperation,
   applyOperation,
   canRedo,
   canUndo,
+  createComponentFromNode,
   createHistory,
   duplicateNode,
   findNode,
   findParent,
   getPage,
+  insertComponentInstance as insertComponentInstanceOperation,
   insertNode as insertNodeOperation,
   isSelfOrDescendant,
+  renameComponent as renameComponentOperation,
+  renameComponentVariant as renameComponentVariantOperation,
+  setInstanceVariant as setInstanceVariantOperation,
   type BoxProps,
   type Breakpoint,
   type BreakpointId,
+  type ComponentDefinition,
+  type ComponentId,
+  type ComponentVariant,
   type DeepPartial,
   type HistoryState,
   type ImageProps,
@@ -29,7 +38,9 @@ import {
   type PageId,
   type Project,
   type SceneNode,
+  type SceneTarget,
   type TextProps,
+  type VariantId,
   redo as redoHistory,
   removeNode,
   undo as undoHistory,
@@ -65,10 +76,29 @@ export interface InsertNodeOptions {
   index?: number;
 }
 
+/** The component variant the editor is currently editing, if any. */
+export interface EditingComponent {
+  componentId: ComponentId;
+  variantId: VariantId;
+  /** The instance on the page that opened this edit session, for "Back to page". */
+  instanceId?: NodeId;
+}
+
+/** The page or component variant that node operations currently address. */
+export interface ActiveScene {
+  kind: "page" | "component";
+  root: SceneNode;
+  target: SceneTarget;
+  page: Page | null;
+  component: ComponentDefinition | null;
+  variant: ComponentVariant | null;
+}
+
 export interface ProjectStoreState {
   project: Project | null;
   activePageId: PageId;
   activeBreakpointId: BreakpointId;
+  editingComponent: EditingComponent | null;
   selection: NodeId[];
   hoveredNodeId: NodeId | null;
   zoom: number;
@@ -103,6 +133,17 @@ export interface ProjectStoreState {
   insertNode(node: SceneNode, options?: InsertNodeOptions): NodeId | null;
   deleteSelection(): void;
   duplicateSelection(): NodeId[];
+  enterComponent(componentId: ComponentId, variantId?: VariantId, instanceId?: NodeId): void;
+  exitComponent(): void;
+  createComponentFromSelection(
+    name?: string,
+  ): { componentId: ComponentId; variantId: VariantId; instanceId: NodeId } | null;
+  insertComponentInstance(componentId: ComponentId, variantId?: VariantId): NodeId | null;
+  addComponentVariant(): VariantId | null;
+  setEditingVariant(variantId: VariantId): void;
+  setInstanceVariant(nodeId: NodeId, variantId: VariantId): void;
+  renameComponentVariant(variantId: VariantId, name: string): void;
+  renameComponent(componentId: ComponentId, name: string): void;
   undo(): void;
   redo(): void;
   saveNow(): Promise<void>;
@@ -158,6 +199,48 @@ export function activeBreakpointOf(
   );
 }
 
+/**
+ * The scene node operations currently address. Component edit mode resolves the
+ * component and variant (explicit, then default, then first); otherwise the
+ * active page. Returns null when the project or target does not exist.
+ */
+export function activeSceneOf(
+  project: Project | null,
+  pageId: PageId,
+  editing: EditingComponent | null,
+): ActiveScene | null {
+  if (!project) return null;
+
+  if (editing) {
+    const component = project.components.find((candidate) => candidate.id === editing.componentId);
+    if (!component || component.variants.length === 0) return null;
+    const variant =
+      component.variants.find((candidate) => candidate.id === editing.variantId) ??
+      component.variants.find((candidate) => candidate.id === component.defaultVariantId) ??
+      component.variants[0];
+    if (!variant) return null;
+    return {
+      kind: "component",
+      root: variant.root,
+      target: { componentId: component.id, variantId: variant.id },
+      page: null,
+      component,
+      variant,
+    };
+  }
+
+  const page = activePageOf(project, pageId);
+  if (!page) return null;
+  return {
+    kind: "page",
+    root: page.root,
+    target: { pageId: page.id },
+    page,
+    component: null,
+    variant: null,
+  };
+}
+
 /** Highest selected nodes, so deleting a parent and child does not double-delete. */
 function topLevelSelection(root: SceneNode, selection: NodeId[]): NodeId[] {
   const unique = [...new Set(selection)].filter(
@@ -168,13 +251,26 @@ function topLevelSelection(root: SceneNode, selection: NodeId[]): NodeId[] {
   );
 }
 
-function defaultInsertParent(page: Page, selection: NodeId[]): NodeId {
+function defaultInsertParent(root: SceneNode, selection: NodeId[]): NodeId {
   const selectedId = selection[0];
-  if (!selectedId) return page.root.id;
-  const node = findNode(page.root, selectedId);
-  if (!node) return page.root.id;
+  if (!selectedId) return root.id;
+  const node = findNode(root, selectedId);
+  if (!node) return root.id;
   if (node.type === "frame") return node.id;
-  return findParent(page.root, selectedId)?.id ?? page.root.id;
+  return findParent(root, selectedId)?.id ?? root.id;
+}
+
+/** The selected frame, or the active root when the selection is not a frame. */
+function insertComponentParent(root: SceneNode, selection: NodeId[]): NodeId {
+  const selectedId = selection[0];
+  if (!selectedId) return root.id;
+  const node = findNode(root, selectedId);
+  return node?.type === "frame" ? node.id : root.id;
+}
+
+/** Builds a `SceneTarget & extra` object without losing the target's fields. */
+function withTarget<T extends object>(target: SceneTarget, extra: T): SceneTarget & T {
+  return { ...target, ...extra } as SceneTarget & T;
 }
 
 export type ProjectStore = UseBoundStore<StoreApi<ProjectStoreState>>;
@@ -208,6 +304,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         history: newHistory(project),
         activePageId: page?.id ?? "",
         activeBreakpointId: breakpoint?.id ?? "",
+        editingComponent: null,
         selection: [],
         hoveredNodeId: null,
         zoom: 1,
@@ -224,6 +321,11 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
     const currentPage = (): Page | null => {
       const state = get();
       return activePageOf(state.project, state.activePageId);
+    };
+
+    const currentScene = (): ActiveScene | null => {
+      const state = get();
+      return activeSceneOf(state.project, state.activePageId, state.editingComponent);
     };
 
     const saveNow = async (): Promise<void> => {
@@ -296,13 +398,14 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       }, debounceMs);
     };
 
-    const applyRecipe = (
+    /** Applies a document operation to history; false when it threw. */
+    const runRecipe = (
       label: string,
       recipe: (draft: Draft<Project>) => void,
       coalesceKey?: string,
-    ): void => {
+    ): boolean => {
       const state = get();
-      if (!state.project || !state.history) return;
+      if (!state.project || !state.history) return false;
       try {
         const history =
           coalesceKey === undefined
@@ -310,9 +413,31 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
             : applyOperation(state.history, label, recipe, { coalesceKey });
         set({ project: history.project, history, dirty: true, error: null });
         get().scheduleSave();
+        return true;
       } catch (error) {
         set({ error: errorMessage(error) });
+        return false;
       }
+    };
+
+    const applyRecipe = (
+      label: string,
+      recipe: (draft: Draft<Project>) => void,
+      coalesceKey?: string,
+    ): void => {
+      runRecipe(label, recipe, coalesceKey);
+    };
+
+    /** Runs a recipe and returns what it captured; null when it threw. */
+    const applyRecipeWithResult = <T>(
+      label: string,
+      recipe: (draft: Draft<Project>) => T,
+    ): T | null => {
+      let result: T | null = null;
+      const applied = runRecipe(label, (draft) => {
+        result = recipe(draft);
+      });
+      return applied ? result : null;
     };
 
     const updateBox = (
@@ -320,29 +445,29 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       patch: DeepPartial<BoxProps>,
       breakpointId?: BreakpointId,
     ): void => {
-      const page = currentPage();
-      if (!page) return;
+      const scene = currentScene();
+      if (!scene) return;
       const activeBreakpointId = breakpointId ?? get().activeBreakpointId;
       applyRecipe("Update box", (draft) => {
-        updateBoxProps(draft, {
-          pageId: page.id,
-          nodeId,
-          breakpointId: activeBreakpointId,
-          patch,
-        });
+        updateBoxProps(
+          draft,
+          withTarget(scene.target, { nodeId, breakpointId: activeBreakpointId, patch }),
+        );
       });
     };
 
     const deleteSelection = (): void => {
       const state = get();
-      const page = currentPage();
-      if (!page || state.selection.length === 0) return;
-      const topLevel = topLevelSelection(page.root, state.selection);
+      const scene = currentScene();
+      if (!scene || state.selection.length === 0) return;
+      const topLevel = topLevelSelection(scene.root, state.selection);
       if (topLevel.length === 0) return;
       const first = topLevel[0];
-      const parent = first ? findParent(page.root, first) : null;
+      const parent = first ? findParent(scene.root, first) : null;
       applyRecipe("Delete selection", (draft) => {
-        for (const nodeId of topLevel) removeNode(draft, { pageId: page.id, nodeId });
+        for (const nodeId of topLevel) {
+          removeNode(draft, withTarget(scene.target, { nodeId }));
+        }
       });
       set({ selection: parent ? [parent.id] : [], hoveredNodeId: null });
     };
@@ -351,6 +476,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       project: null,
       activePageId: "",
       activeBreakpointId: "",
+      editingComponent: null,
       selection: [],
       hoveredNodeId: null,
       zoom: 1,
@@ -396,6 +522,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
           project: null,
           activePageId: "",
           activeBreakpointId: "",
+          editingComponent: null,
           selection: [],
           hoveredNodeId: null,
           zoom: 1,
@@ -414,7 +541,12 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         const state = get();
         const page = state.project ? getPage(state.project, pageId) : undefined;
         if (!page) return;
-        set({ activePageId: page.id, selection: [], hoveredNodeId: null });
+        set({
+          activePageId: page.id,
+          editingComponent: null,
+          selection: [],
+          hoveredNodeId: null,
+        });
       },
 
       setActiveBreakpoint(breakpointId) {
@@ -426,8 +558,8 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       },
 
       select(nodeId, additive = false) {
-        const page = currentPage();
-        if (page && !findNode(page.root, nodeId)) return;
+        const scene = currentScene();
+        if (scene && !findNode(scene.root, nodeId)) return;
         const selection = get().selection;
         if (!additive) {
           set({ selection: [nodeId] });
@@ -441,9 +573,9 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       },
 
       selectMany(nodeIds) {
-        const page = currentPage();
-        if (!page) return;
-        set({ selection: nodeIds.filter((id) => findNode(page.root, id) !== null) });
+        const scene = currentScene();
+        if (!scene) return;
+        set({ selection: nodeIds.filter((id) => findNode(scene.root, id) !== null) });
       },
 
       clearSelection() {
@@ -451,6 +583,10 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       },
 
       setHovered(nodeId) {
+        if (nodeId !== null) {
+          const scene = currentScene();
+          if (scene && !findNode(scene.root, nodeId)) return;
+        }
         set({ hoveredNodeId: nodeId });
       },
 
@@ -468,34 +604,32 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       updateBox,
 
       updateText(nodeId, patch) {
-        const page = currentPage();
-        if (!page) return;
+        const scene = currentScene();
+        if (!scene) return;
         const breakpointId = get().activeBreakpointId;
         applyRecipe("Update text", (draft) => {
-          updateTextProps(draft, { pageId: page.id, nodeId, breakpointId, patch });
+          updateTextProps(draft, withTarget(scene.target, { nodeId, breakpointId, patch }));
         });
       },
 
       updateImage(nodeId, patch) {
-        const page = currentPage();
-        if (!page) return;
+        const scene = currentScene();
+        if (!scene) return;
         const breakpointId = get().activeBreakpointId;
         applyRecipe("Update image", (draft) => {
-          updateImageProps(draft, { pageId: page.id, nodeId, breakpointId, patch });
+          updateImageProps(draft, withTarget(scene.target, { nodeId, breakpointId, patch }));
         });
       },
 
       insertNode(node, options = {}) {
-        const page = currentPage();
-        if (!page) return null;
-        const parentId = options.parentId ?? defaultInsertParent(page, get().selection);
+        const scene = currentScene();
+        if (!scene) return null;
+        const parentId = options.parentId ?? defaultInsertParent(scene.root, get().selection);
         applyRecipe("Insert node", (draft) => {
-          insertNodeOperation(draft, {
-            pageId: page.id,
-            parentId,
-            node,
-            index: options.index,
-          });
+          insertNodeOperation(
+            draft,
+            withTarget(scene.target, { parentId, node, index: options.index }),
+          );
         });
         set({ selection: [node.id] });
         return node.id;
@@ -505,25 +639,184 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
 
       duplicateSelection() {
         const state = get();
-        const page = currentPage();
-        if (!page) return [];
-        const topLevel = topLevelSelection(page.root, state.selection);
+        const scene = currentScene();
+        if (!scene) return [];
+        const topLevel = topLevelSelection(scene.root, state.selection);
         const newIds: NodeId[] = [];
         if (topLevel.length === 0) return newIds;
         applyRecipe("Duplicate selection", (draft) => {
           for (const nodeId of topLevel) {
-            newIds.push(duplicateNode(draft, { pageId: page.id, nodeId }));
+            newIds.push(duplicateNode(draft, withTarget(scene.target, { nodeId })));
           }
         });
         set({ selection: newIds });
         return newIds;
       },
 
+      enterComponent(componentId, variantId, instanceId) {
+        const state = get();
+        const project = state.project;
+        if (!project) return;
+        const component = project.components.find((candidate) => candidate.id === componentId);
+        if (!component || component.variants.length === 0) return;
+        const variant =
+          variantId !== undefined
+            ? component.variants.find((candidate) => candidate.id === variantId)
+            : (component.variants.find(
+                (candidate) => candidate.id === component.defaultVariantId,
+              ) ?? component.variants[0]);
+        if (!variant) return;
+        const editing: EditingComponent = { componentId: component.id, variantId: variant.id };
+        if (instanceId !== undefined) editing.instanceId = instanceId;
+        set({ editingComponent: editing, selection: [], hoveredNodeId: null });
+      },
+
+      exitComponent() {
+        const state = get();
+        const editing = state.editingComponent;
+        if (!editing) return;
+        let selection: NodeId[] = [];
+        if (editing.instanceId !== undefined) {
+          const pageScene = activeSceneOf(state.project, state.activePageId, null);
+          if (pageScene && findNode(pageScene.root, editing.instanceId) !== null) {
+            selection = [editing.instanceId];
+          }
+        }
+        set({ editingComponent: null, selection, hoveredNodeId: null });
+      },
+
+      createComponentFromSelection(name) {
+        const state = get();
+        const scene = currentScene();
+        if (!scene || scene.kind !== "page") return null;
+        if (state.selection.length !== 1) return null;
+        const nodeId = state.selection[0];
+        if (nodeId === undefined || nodeId === scene.root.id) return null;
+
+        const result = applyRecipeWithResult("Create component", (draft) =>
+          createComponentFromNode(draft, {
+            pageId: state.activePageId,
+            nodeId,
+            name,
+          }),
+        );
+        if (!result) return null;
+        set({
+          editingComponent: {
+            componentId: result.componentId,
+            variantId: result.variantId,
+            instanceId: result.instanceId,
+          },
+          selection: [],
+          hoveredNodeId: null,
+        });
+        return result;
+      },
+
+      insertComponentInstance(componentId, variantId) {
+        const state = get();
+        const scene = currentScene();
+        if (!scene) return null;
+        const parentId = insertComponentParent(scene.root, state.selection);
+        const instanceId = applyRecipeWithResult("Insert component instance", (draft) =>
+          insertComponentInstanceOperation(draft, {
+            pageId: state.activePageId,
+            parentId,
+            componentId,
+            variantId,
+          }),
+        );
+        if (instanceId === null) return null;
+        set({ selection: [instanceId] });
+        return instanceId;
+      },
+
+      addComponentVariant() {
+        const state = get();
+        const editing = state.editingComponent;
+        if (!editing) return null;
+        const variantId = applyRecipeWithResult("Add variant", (draft) =>
+          addComponentVariantOperation(draft, {
+            componentId: editing.componentId,
+            fromVariantId: editing.variantId,
+          }),
+        );
+        if (variantId === null) return null;
+        set({
+          editingComponent: { ...editing, variantId },
+          selection: [],
+          hoveredNodeId: null,
+        });
+        return variantId;
+      },
+
+      setEditingVariant(variantId) {
+        const state = get();
+        const editing = state.editingComponent;
+        if (!editing) return;
+        const component = state.project?.components.find(
+          (candidate) => candidate.id === editing.componentId,
+        );
+        if (!component?.variants.some((variant) => variant.id === variantId)) return;
+        set({
+          editingComponent: { ...editing, variantId },
+          selection: [],
+          hoveredNodeId: null,
+        });
+      },
+
+      setInstanceVariant(nodeId, variantId) {
+        const scene = currentScene();
+        if (!scene) return;
+        applyRecipe("Set instance variant", (draft) => {
+          setInstanceVariantOperation(draft, withTarget(scene.target, { nodeId }), variantId);
+        });
+      },
+
+      renameComponentVariant(variantId, name) {
+        const state = get();
+        const project = state.project;
+        if (!project) return;
+        const editing = state.editingComponent;
+        const editingComponent = editing
+          ? project.components.find((candidate) => candidate.id === editing.componentId)
+          : undefined;
+        const owner =
+          editingComponent?.variants.some((variant) => variant.id === variantId) === true
+            ? editingComponent
+            : project.components.find((component) =>
+                component.variants.some((variant) => variant.id === variantId),
+              );
+        if (!owner) return;
+        applyRecipe("Rename variant", (draft) => {
+          renameComponentVariantOperation(draft, {
+            componentId: owner.id,
+            variantId,
+            name,
+          });
+        });
+      },
+
+      renameComponent(componentId, name) {
+        applyRecipe("Rename component", (draft) => {
+          renameComponentOperation(draft, { componentId, name });
+        });
+      },
+
       undo() {
         const state = get();
         if (!state.history || !canUndo(state.history)) return;
         const history = undoHistory(state.history);
-        set({ project: history.project, history, dirty: true });
+        const scene = activeSceneOf(history.project, state.activePageId, state.editingComponent);
+        set({
+          project: history.project,
+          history,
+          dirty: true,
+          editingComponent: scene ? state.editingComponent : null,
+          selection: scene
+            ? state.selection.filter((nodeId) => findNode(scene.root, nodeId) !== null)
+            : [],
+        });
         get().scheduleSave();
       },
 
@@ -531,7 +824,16 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         const state = get();
         if (!state.history || !canRedo(state.history)) return;
         const history = redoHistory(state.history);
-        set({ project: history.project, history, dirty: true });
+        const scene = activeSceneOf(history.project, state.activePageId, state.editingComponent);
+        set({
+          project: history.project,
+          history,
+          dirty: true,
+          editingComponent: scene ? state.editingComponent : null,
+          selection: scene
+            ? state.selection.filter((nodeId) => findNode(scene.root, nodeId) !== null)
+            : [],
+        });
         get().scheduleSave();
       },
 

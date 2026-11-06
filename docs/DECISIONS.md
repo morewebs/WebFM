@@ -23,3 +23,4 @@ rewrite history; supersede with a new entry.
 | D16 | 2026-11-06 | accepted | `main` stays green; work on branches; no force-pushes or deletions. | The user's standing constraint. |
 | D17 | 2026-11-06 | accepted-with-risk | Extracted Framer UI assets may be used for the pixel replica and are stored with provenance. They remain Framer's property; redistribution risk is recorded. | User instruction; replace before any public distribution that requires it. |
 | D18 | 2026-11-06 | accepted | Framer screenshots/raw reference stay in gitignored `.reference/`; distilled, verified notes are committed. | Keeps the public repo lean and avoids dumping proprietary screens. |
+| D19 | 2026-11-06 | accepted | Components slice: create from a layer, instances, component edit mode, and variants. Property-control UI (Variables) is the next sub-slice; the model and renderer accept bindings now. | Ships a complete, verifiable component core instead of a half-built Variables panel. |
