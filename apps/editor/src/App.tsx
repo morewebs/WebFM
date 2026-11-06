@@ -3,10 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api/client";
 import { installShortcuts } from "./keyboard/registry";
 import { useProjectStore } from "./state/project-store";
-import { BottomBar } from "./ui/shell/BottomBar";
 import { Canvas } from "./ui/canvas/Canvas";
 import { PublishDialog } from "./ui/dialogs/PublishDialog";
 import { Preview } from "./ui/preview/Preview";
+import { BottomBar } from "./ui/shell/BottomBar";
 import { LeftSidebar } from "./ui/shell/LeftSidebar";
 import { RightSidebar } from "./ui/shell/RightSidebar";
 import { TopBar } from "./ui/shell/TopBar";
@@ -75,13 +75,17 @@ export function App() {
         duplicateSelection,
         clearSelection,
         setZoom,
-        toggleInsert: () =>
-          useUIStore.getState().setInsertOpen(!useUIStore.getState().insertOpen),
+        toggleInsert: () => useUIStore.getState().setInsertOpen(!useUIStore.getState().insertOpen),
         setTool: (tool) => useUIStore.getState().setTool(tool),
         setLeftTab: (tab) => useUIStore.getState().setLeftTab(tab),
         showStyle: () => useUIStore.getState().setRightTab("style"),
         openPreview: () => useUIStore.getState().setPreviewOpen(true),
         openPublish: () => useUIStore.getState().setPublishOpen(true),
+        createComponent: () => useProjectStore.getState().createComponentFromSelection(),
+        backToPage: () => {
+          const state = useProjectStore.getState();
+          if (state.editingComponent) state.exitComponent();
+        },
       }),
     [undo, redo, deleteSelection, duplicateSelection, clearSelection, setZoom],
   );

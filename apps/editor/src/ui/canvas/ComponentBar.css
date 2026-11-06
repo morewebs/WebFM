@@ -1,0 +1,90 @@
+/*
+ * Component edit mode bar. Floats above the canvas at the top centre, above the
+ * breakpoint bar and selection chrome, and never scales with the stage zoom.
+ */
+
+.wfm-component-bar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 20;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 4px;
+  transform: translateX(-50%);
+  border: 1px solid #333333;
+  border-radius: 8px;
+  background: #1f1f1f;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  color: var(--wfm-text);
+  font-size: 12px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.wfm-component-bar__back,
+.wfm-component-bar__add {
+  flex: none;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--wfm-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.wfm-component-bar__back:hover,
+.wfm-component-bar__add:hover {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-component-bar__back:focus-visible,
+.wfm-component-bar__add:focus-visible,
+.wfm-component-bar__select:focus-visible {
+  outline: 1px solid var(--wfm-accent);
+  outline-offset: 1px;
+}
+
+.wfm-component-bar__separator {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  background: #333333;
+}
+
+.wfm-component-bar__glyph {
+  flex: none;
+  color: var(--wfm-accent);
+}
+
+.wfm-component-bar__name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.wfm-component-bar__variant {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--wfm-text-dim);
+}
+
+.wfm-component-bar__select {
+  flex: none;
+  height: 28px;
+  max-width: 140px;
+  padding: 0 6px;
+  border: 1px solid #333333;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: var(--wfm-text);
+  font-size: 12px;
+  cursor: pointer;
+}

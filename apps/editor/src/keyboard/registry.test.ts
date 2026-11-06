@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  SHORTCUT_DEFINITIONS,
   createShortcutBindings,
   installShortcuts,
-  shouldIgnoreKeyboardEvent,
   type KeyboardEventLike,
   type KeyboardEventTarget,
+  SHORTCUT_DEFINITIONS,
+  shouldIgnoreKeyboardEvent,
 } from "./registry";
 
 function keyEvent(overrides: Partial<KeyboardEventLike> = {}): KeyboardEventLike {
@@ -41,7 +41,7 @@ describe("shortcut registry", () => {
     expect(bindings.map((binding) => binding.id).sort()).toEqual(
       SHORTCUT_DEFINITIONS.map((definition) => definition.id).sort(),
     );
-    expect(SHORTCUT_DEFINITIONS).toHaveLength(18);
+    expect(SHORTCUT_DEFINITIONS).toHaveLength(20);
   });
 
   it("maps the tool and panel shortcuts without modifiers", () => {
@@ -54,7 +54,11 @@ describe("shortcut registry", () => {
       false,
     );
     expect(bindingFor(bindings, "show-style").match(keyEvent({ key: "e" }))).toBe(true);
-    expect(bindingFor(bindings, "show-pages").match(keyEvent({ key: "1", altKey: true, shiftKey: true }))).toBe(true);
+    expect(
+      bindingFor(bindings, "show-pages").match(
+        keyEvent({ key: "1", altKey: true, shiftKey: true }),
+      ),
+    ).toBe(true);
   });
 
   it("maps Mod+Z to undo and Shift+Mod+Z to redo", () => {
@@ -69,6 +73,30 @@ describe("shortcut registry", () => {
     expect(redo.match(keyEvent({ key: "z", metaKey: true, shiftKey: true }))).toBe(true);
     expect(redo.match(keyEvent({ key: "z", ctrlKey: true, shiftKey: true }))).toBe(true);
     expect(redo.match(keyEvent({ key: "z", ctrlKey: true }))).toBe(false);
+  });
+
+  it("maps Mod/Ctrl+Alt+K without Shift to create component", () => {
+    const bindings = createShortcutBindings(actions());
+    const createComponent = bindingFor(bindings, "create-component");
+
+    expect(createComponent.match(keyEvent({ key: "k", ctrlKey: true, altKey: true }))).toBe(true);
+    expect(createComponent.match(keyEvent({ key: "K", metaKey: true, altKey: true }))).toBe(true);
+    expect(createComponent.match(keyEvent({ key: "k", ctrlKey: true }))).toBe(false);
+    expect(createComponent.match(keyEvent({ key: "k", altKey: true }))).toBe(false);
+    expect(
+      createComponent.match(keyEvent({ key: "k", ctrlKey: true, altKey: true, shiftKey: true })),
+    ).toBe(false);
+  });
+
+  it("maps Alt+Escape without primary or Shift to back to page", () => {
+    const bindings = createShortcutBindings(actions());
+    const backToPage = bindingFor(bindings, "back-to-page");
+
+    expect(backToPage.match(keyEvent({ key: "Escape", altKey: true }))).toBe(true);
+    expect(backToPage.match(keyEvent({ key: "Escape" }))).toBe(false);
+    expect(backToPage.match(keyEvent({ key: "Escape", altKey: true, metaKey: true }))).toBe(false);
+    expect(backToPage.match(keyEvent({ key: "Escape", altKey: true, ctrlKey: true }))).toBe(false);
+    expect(backToPage.match(keyEvent({ key: "Escape", altKey: true, shiftKey: true }))).toBe(false);
   });
 
   it("maps Delete and Backspace without modifiers to delete selection", () => {
@@ -88,16 +116,20 @@ describe("shortcut registry", () => {
   });
 
   it("runs the action for a matching event", () => {
-    const spies = actions();
+    const spies = { ...actions(), createComponent: vi.fn(), backToPage: vi.fn() };
     const bindings = createShortcutBindings(spies);
     bindingFor(bindings, "undo").run();
     bindingFor(bindings, "redo").run();
     bindingFor(bindings, "delete-selection").run();
     bindingFor(bindings, "clear-selection").run();
+    bindingFor(bindings, "create-component").run();
+    bindingFor(bindings, "back-to-page").run();
     expect(spies.undo).toHaveBeenCalledTimes(1);
     expect(spies.redo).toHaveBeenCalledTimes(1);
     expect(spies.deleteSelection).toHaveBeenCalledTimes(1);
     expect(spies.clearSelection).toHaveBeenCalledTimes(1);
+    expect(spies.createComponent).toHaveBeenCalledTimes(1);
+    expect(spies.backToPage).toHaveBeenCalledTimes(1);
   });
 
   it("ignores events from inputs, textareas, selects and contentEditable", () => {

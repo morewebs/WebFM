@@ -5,7 +5,13 @@
  * 13px name and 10px Primary badge. This file only adds the tree anatomy:
  * a 16px disclosure slot, the 12px-per-depth indent, hover actions, the inline
  * rename field and the drag/drop indicators, all measured against Framer.
+ * Component identity uses a purple accent so instances read as components
+ * without touching the blue selection treatment.
  */
+
+:root {
+  --wfm-component: #b06cff;
+}
 
 .wfm-layers__divider {
   height: 1px;
@@ -159,4 +165,26 @@
 /* The menu is positioned from the pointer, so it escapes the panel scroll. */
 .wfm-layer-menu {
   position: fixed;
+}
+
+/* --------------------------------------------------------- component accent */
+
+.wfm-layer-row.is-instance .wfm-layer-row__glyph,
+.wfm-layer-row.is-instance .wfm-list-row__name {
+  color: var(--wfm-component);
+}
+
+/* Selection stays the shared blue row with white text. */
+.wfm-layer-row.is-instance.is-selected .wfm-layer-row__glyph,
+.wfm-layer-row.is-instance.is-selected .wfm-list-row__name {
+  color: #fff;
+}
+
+.wfm-path-button--component .wfm-path-button__component-glyph {
+  color: var(--wfm-component);
+}
+
+.wfm-badge--variant {
+  background: rgb(176 108 255 / 16%);
+  color: var(--wfm-component);
 }

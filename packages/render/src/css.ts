@@ -128,7 +128,11 @@ function collectEntries(
         if (!resolved || !resolved.root.visible) break;
 
         const rootProps = resolveNodeProps(resolved.root, breakpointId, project.breakpoints);
-        const mergedProps: BoxProps = { ...rootProps, position: props.position };
+        const mergedProps: BoxProps = {
+          ...rootProps,
+          position: props.position,
+          size: props.size,
+        };
         entries.set(className, {
           className,
           styles: resolveBoxStyles(mergedProps, context, resolveAssetUrl),

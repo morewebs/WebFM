@@ -1,5 +1,10 @@
 export { createAssetUrlResolver } from "./assets";
-export { type ResolvedComponentInstance, resolveComponentInstance } from "./components";
+export {
+  type ResolvedComponentInstance,
+  type ResolvedComponentScene,
+  resolveComponentInstance,
+  resolveComponentScene,
+} from "./components";
 export { buildPageCss, rule, styleToCss } from "./css";
 export { PageView, renderNode } from "./render";
 export {

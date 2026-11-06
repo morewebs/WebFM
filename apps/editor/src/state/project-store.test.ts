@@ -71,6 +71,20 @@ function frameAt(project: Project | null, nodeId: string): FrameNode {
   return node;
 }
 
+function variantFrame(project: Project, componentId: string, variantId: string): FrameNode {
+  const component = project.components.find((candidate) => candidate.id === componentId);
+  const variant = component?.variants.find((candidate) => candidate.id === variantId);
+  if (!variant) throw new Error(`Missing variant ${variantId}`);
+  return variant.root;
+}
+
+function instanceNode(project: Project | null, nodeId: string) {
+  const page = project?.pages[0];
+  const node = page ? findNode(page.root, nodeId) : null;
+  if (node?.type !== "componentInstance") throw new Error(`Missing instance ${nodeId}`);
+  return node;
+}
+
 describe("project store", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -253,5 +267,162 @@ describe("project store", () => {
     expect(store.getState().loadState).toBe("error");
     expect(store.getState().error).toBe("Project not found.");
     expect(store.getState().project).toBeNull();
+  });
+
+  it("creates a component from the selected frame and enters its edit mode", async () => {
+    const { project, childId } = fixture();
+    const { api, saveProject } = makeApi(project);
+    const store = createProjectStore({ api, debounceMs: 600, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card");
+
+    expect(created).not.toBeNull();
+    const ids = created!;
+    const state = store.getState();
+    const page = state.project?.pages[0];
+    expect(page ? findNode(page.root, childId) : undefined).toBeNull();
+    const instance = instanceNode(state.project, ids.instanceId);
+    expect(instance.componentId).toBe(ids.componentId);
+
+    const component = state.project?.components.find(
+      (candidate) => candidate.id === ids.componentId,
+    );
+    expect(component?.name).toBe("Card");
+    expect(component?.variants).toHaveLength(1);
+    expect(component?.variants[0]?.id).toBe(ids.variantId);
+    expect(state.editingComponent).toEqual({
+      componentId: ids.componentId,
+      variantId: ids.variantId,
+      instanceId: ids.instanceId,
+    });
+    expect(state.selection).toEqual([]);
+    expect(state.dirty).toBe(true);
+
+    expect(saveProject).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(saveProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("edits the variant root in component mode, undoes it, and exits to the instance", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card")!;
+    const variantRootId = variantFrame(
+      store.getState().project!,
+      created.componentId,
+      created.variantId,
+    ).id;
+
+    store.getState().updateBox(variantRootId, { position: { x: 12, y: 8 } });
+
+    let current = store.getState().project!;
+    expect(
+      variantFrame(current, created.componentId, created.variantId).responsive.base.position,
+    ).toMatchObject({ x: 12, y: 8 });
+    // The page instance keeps its own placement; the update did not hit the page.
+    expect(instanceNode(current, created.instanceId).responsive.base.position).toMatchObject({
+      x: 0,
+      y: 0,
+    });
+
+    store.getState().undo();
+    current = store.getState().project!;
+    expect(
+      variantFrame(current, created.componentId, created.variantId).responsive.base.position,
+    ).toMatchObject({ x: 0, y: 0 });
+
+    store.getState().exitComponent();
+    expect(store.getState().editingComponent).toBeNull();
+    expect(store.getState().selection).toEqual([created.instanceId]);
+  });
+
+  it("adds a variant, inserts an instance and changes that instance's variant", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card")!;
+    const variantId = store.getState().addComponentVariant();
+
+    expect(variantId).not.toBeNull();
+    expect(store.getState().editingComponent?.variantId).toBe(variantId);
+    expect(store.getState().selection).toEqual([]);
+    const component = store
+      .getState()
+      .project?.components.find((candidate) => candidate.id === created.componentId);
+    expect(component?.variants).toHaveLength(2);
+    expect(component?.variants.find((variant) => variant.id === variantId)?.name).toBe(
+      "Variant 2",
+    );
+
+    store.getState().exitComponent();
+    const instanceId = store.getState().insertComponentInstance(created.componentId);
+
+    expect(instanceId).not.toBeNull();
+    expect(store.getState().selection).toEqual([instanceId]);
+    expect(instanceNode(store.getState().project, instanceId!).variantId).toBe(created.variantId);
+
+    store.getState().setInstanceVariant(instanceId!, variantId!);
+    expect(instanceNode(store.getState().project, instanceId!).variantId).toBe(variantId);
+  });
+
+  it("leaves component mode when the active page changes and resets on open", async () => {
+    const { project, pageId, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card")!;
+
+    store.getState().enterComponent(created.componentId, created.variantId, created.instanceId);
+    expect(store.getState().editingComponent).not.toBeNull();
+
+    store.getState().setActivePage(pageId);
+    expect(store.getState().editingComponent).toBeNull();
+
+    store.getState().enterComponent(created.componentId);
+    expect(store.getState().editingComponent).not.toBeNull();
+
+    await store.getState().openProject(project.id);
+    expect(store.getState().editingComponent).toBeNull();
+    expect(store.getState().selection).toEqual([]);
+  });
+
+  it("keeps page-mode insertion, updates and deletion on the page", async () => {
+    const { project, rootId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const inserted = store.getState().insertNode(
+      createFrame({
+        id: "node_banner",
+        name: "Banner",
+        props: { position: { x: 1, y: 2 } },
+      }),
+    );
+    expect(inserted).toBe("node_banner");
+    expect(store.getState().selection).toEqual(["node_banner"]);
+    expect(frameAt(store.getState().project, rootId).children).toHaveLength(2);
+
+    store.getState().updateBox("node_banner", { position: { x: 5, y: 6 } });
+    expect(frameAt(store.getState().project, "node_banner").responsive.base.position).toMatchObject(
+      { x: 5, y: 6 },
+    );
+
+    store.getState().select("node_banner");
+    store.getState().deleteSelection();
+    const root = store.getState().project?.pages[0]?.root;
+    expect(root ? findNode(root, "node_banner") : null).toBeNull();
+    expect(store.getState().selection).toEqual([rootId]);
   });
 });

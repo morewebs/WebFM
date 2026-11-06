@@ -1,11 +1,12 @@
 /**
  * Layers tab.
  *
- * A store-driven tree of the active page: the page root frame ("Desktop") with
- * a Primary badge, frames/text/images/component instances beneath it. Rows
- * support select, inline rename, a context menu, visibility/lock toggles and
- * drag reorder/reparent through the project store so undo/redo sees one entry
- * per gesture. Collapse state is local; Alt+L collapses every group.
+ * A store-driven tree of the active scene: the page root frame ("Desktop") with
+ * a Primary badge, or a component variant root while editing a component, with
+ * frames/text/images/component instances beneath it. Rows support select,
+ * inline rename, a context menu, visibility/lock toggles and drag
+ * reorder/reparent through the project store so undo/redo sees one entry per
+ * gesture. Collapse state is local; Alt+L collapses every group.
  */
 
 import {
@@ -35,7 +36,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { activePageOf, useProjectStore } from "../../state/project-store";
+import { activeSceneOf, useProjectStore } from "../../state/project-store";
 import { Icon, type IconName } from "../icons";
 import "./LayersPanel.css";
 
@@ -51,8 +52,8 @@ interface EditingName {
   value: string;
 }
 
-const MENU_WIDTH = 200;
-const MENU_HEIGHT = 190;
+const MENU_WIDTH = 210;
+const MENU_HEIGHT = 252;
 
 function glyphFor(node: SceneNode): IconName {
   if (node.type === "text") return "text";
@@ -79,13 +80,20 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export function LayersPanel() {
   const project = useProjectStore((state) => state.project);
   const activePageId = useProjectStore((state) => state.activePageId);
+  const editingComponent = useProjectStore((state) => state.editingComponent);
   const selection = useProjectStore((state) => state.selection);
   const select = useProjectStore((state) => state.select);
   const selectMany = useProjectStore((state) => state.selectMany);
   const applyRecipe = useProjectStore((state) => state.applyRecipe);
+  const enterComponent = useProjectStore((state) => state.enterComponent);
+  const renameComponent = useProjectStore((state) => state.renameComponent);
+  const createComponentFromSelection = useProjectStore(
+    (state) => state.createComponentFromSelection,
+  );
 
-  const page = activePageOf(project, activePageId);
-  const root = page?.root ?? null;
+  const scene = activeSceneOf(project, activePageId, editingComponent);
+  const root = scene?.root ?? null;
+  const isComponentMode = scene?.kind === "component";
 
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<NodeId>>(() => new Set());
@@ -106,6 +114,14 @@ export function LayersPanel() {
     element.focus();
     element.select();
   }, []);
+
+  // Entering or leaving a component replaces the tree; drop transient UI so a
+  // rename or menu never targets a node id from the previous scene.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the session object is the trigger
+  useEffect(() => {
+    setMenu(null);
+    setEditing(null);
+  }, [editingComponent]);
 
   /** Search keeps matches and all of their ancestors; null means no filter. */
   const matching = useMemo(() => {
@@ -173,7 +189,12 @@ export function LayersPanel() {
   const startRename = (node: SceneNode): void => {
     cancelRenameRef.current = null;
     setMenu(null);
-    setEditing({ id: node.id, value: node.name });
+    const rootComponent =
+      isComponentMode && node.id === root?.id ? (scene?.component ?? null) : null;
+    setEditing({
+      id: node.id,
+      value: rootComponent ? rootComponent.name : node.name,
+    });
   };
 
   const commitRename = (nodeId: NodeId, rawValue: string): void => {
@@ -183,14 +204,21 @@ export function LayersPanel() {
       return;
     }
     const name = rawValue.trim();
-    if (name.length > 0) {
-      const state = useProjectStore.getState();
-      const currentPage = activePageOf(state.project, state.activePageId);
-      const node = currentPage ? findNode(currentPage.root, nodeId) : null;
-      if (currentPage && node && node.name !== name) {
-        applyRecipe("Rename layer", (draft) => {
-          renameNode(draft, { pageId: currentPage.id, nodeId }, name);
-        });
+    const state = useProjectStore.getState();
+    const currentScene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
+    if (name.length > 0 && currentScene) {
+      const renamesComponent = currentScene.kind === "component" && nodeId === currentScene.root.id;
+      if (renamesComponent && currentScene.component) {
+        if (currentScene.component.name !== name) {
+          renameComponent(currentScene.component.id, name);
+        }
+      } else {
+        const node = findNode(currentScene.root, nodeId);
+        if (node && node.name !== name) {
+          applyRecipe("Rename layer", (draft) => {
+            renameNode(draft, { ...currentScene.target, nodeId }, name);
+          });
+        }
       }
     }
     setEditing((current) => (current?.id === nodeId ? null : current));
@@ -202,39 +230,49 @@ export function LayersPanel() {
   };
 
   const duplicateLayer = (node: SceneNode): void => {
-    if (!page || node.id === page.root.id) return;
+    if (!scene || node.id === scene.root.id) return;
     const created: { id: NodeId | null } = { id: null };
     applyRecipe("Duplicate layer", (draft) => {
-      created.id = duplicateNode(draft, { pageId: page.id, nodeId: node.id });
+      created.id = duplicateNode(draft, { ...scene.target, nodeId: node.id });
     });
     if (created.id) select(created.id);
     setMenu(null);
   };
 
   const toggleVisibility = (node: SceneNode): void => {
-    if (!page) return;
+    if (!scene) return;
     applyRecipe(node.visible ? "Hide layer" : "Show layer", (draft) => {
-      setNodeVisible(draft, { pageId: page.id, nodeId: node.id }, !node.visible);
+      setNodeVisible(draft, { ...scene.target, nodeId: node.id }, !node.visible);
     });
     setMenu(null);
   };
 
   const toggleLock = (node: SceneNode): void => {
-    if (!page) return;
+    if (!scene) return;
     applyRecipe(node.locked ? "Unlock layer" : "Lock layer", (draft) => {
-      setNodeLocked(draft, { pageId: page.id, nodeId: node.id }, !node.locked);
+      setNodeLocked(draft, { ...scene.target, nodeId: node.id }, !node.locked);
     });
     setMenu(null);
   };
 
   const deleteLayer = (node: SceneNode): void => {
-    if (!page || node.id === page.root.id) return;
-    const parent = findParent(page.root, node.id);
+    if (!scene || node.id === scene.root.id) return;
+    const parent = findParent(scene.root, node.id);
     applyRecipe("Delete layer", (draft) => {
-      removeNode(draft, { pageId: page.id, nodeId: node.id });
+      removeNode(draft, { ...scene.target, nodeId: node.id });
     });
     const rest = selection.filter((id) => id !== node.id);
     selectMany(rest.length > 0 ? rest : parent ? [parent.id] : []);
+    setMenu(null);
+  };
+
+  const editMainComponent = (node: Extract<SceneNode, { type: "componentInstance" }>): void => {
+    enterComponent(node.componentId, node.variantId ?? undefined, node.id);
+    setMenu(null);
+  };
+
+  const createComponent = (): void => {
+    createComponentFromSelection();
     setMenu(null);
   };
 
@@ -272,7 +310,7 @@ export function LayersPanel() {
   };
 
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>, node: SceneNode): void => {
-    if (!page || node.locked || node.id === page.root.id) {
+    if (!scene || node.locked || node.id === scene.root.id) {
       event.preventDefault();
       return;
     }
@@ -310,7 +348,7 @@ export function LayersPanel() {
     const draggedId = draggedRef.current;
     const position = drop?.nodeId === node.id ? drop.position : resolveDropPosition(event, node);
     clearDrag();
-    if (!page || !canDropOn(node, draggedId)) return;
+    if (!scene || !canDropOn(node, draggedId)) return;
 
     let parentId: NodeId;
     let index: number;
@@ -319,11 +357,11 @@ export function LayersPanel() {
       parentId = node.id;
       index = node.children.length;
     } else {
-      const parent = findParent(page.root, node.id);
+      const parent = findParent(scene.root, node.id);
       if (!parent) return;
       parentId = parent.id;
       index = indexOfNode(parent, node.id) + (position === "after" ? 1 : 0);
-      const previousParent = findParent(page.root, draggedId);
+      const previousParent = findParent(scene.root, draggedId);
       if (previousParent && previousParent.id === parent.id) {
         const previousIndex = indexOfNode(previousParent, draggedId);
         if (previousIndex < index) index -= 1;
@@ -331,7 +369,7 @@ export function LayersPanel() {
     }
 
     applyRecipe("Move layer", (draft) => {
-      moveNode(draft, { pageId: page.id, nodeId: draggedId, parentId, index });
+      moveNode(draft, { ...scene.target, nodeId: draggedId, parentId, index });
     });
   };
 
@@ -348,8 +386,16 @@ export function LayersPanel() {
     }
   };
 
+  const handleRowDoubleClick = (node: SceneNode): void => {
+    if (node.type === "componentInstance") {
+      editMainComponent(node);
+      return;
+    }
+    startRename(node);
+  };
+
   const renderNode = (node: SceneNode, depth: number): ReactNode => {
-    if (!root || !page) return null;
+    if (!root) return null;
     if (matching && !matching.has(node.id)) return null;
 
     const isRoot = node.id === root.id;
@@ -358,10 +404,15 @@ export function LayersPanel() {
     const expandable = isExpandable(node);
     const open = matching ? true : !collapsed.has(node.id);
     const dropPosition = drop?.nodeId === node.id ? drop.position : null;
+    const isInstance = node.type === "componentInstance";
+    const rootLabel = isRoot
+      ? (scene?.component?.name ?? scene?.variant?.name ?? node.name)
+      : node.name;
 
     const rowClass = ["wfm-list-row", "wfm-layer-row"];
     if (isSelected) rowClass.push("is-selected");
     if (!node.visible) rowClass.push("is-hidden");
+    if (isInstance) rowClass.push("is-instance");
     if (draggingId === node.id) rowClass.push("is-dragging");
     if (dropPosition) rowClass.push(`is-drop-${dropPosition}`);
 
@@ -377,7 +428,7 @@ export function LayersPanel() {
         style={{ paddingLeft: 8 + depth * 12 }}
         draggable={!isEditing && !isRoot && !node.locked}
         onClick={(event) => select(node.id, event.shiftKey || event.metaKey || event.ctrlKey)}
-        onDoubleClick={() => startRename(node)}
+        onDoubleClick={() => handleRowDoubleClick(node)}
         onContextMenu={(event) => openMenu(event, node)}
         onKeyDown={(event) => handleRowKeyDown(event, node)}
         onDragStart={(event) => handleDragStart(event, node)}
@@ -401,7 +452,11 @@ export function LayersPanel() {
             </button>
           ) : null}
         </span>
-        <Icon name={glyphFor(node)} size={16} className="wfm-layer-row__glyph" />
+        <Icon
+          name={glyphFor(node)}
+          size={16}
+          className={`wfm-layer-row__glyph${isInstance ? " wfm-layer-row__glyph--component" : ""}`}
+        />
         {isEditing ? (
           <input
             className="wfm-layer-row__rename"
@@ -425,7 +480,7 @@ export function LayersPanel() {
             }}
           />
         ) : (
-          <span className="wfm-list-row__name">{node.name}</span>
+          <span className="wfm-list-row__name">{rootLabel}</span>
         )}
         <span
           className={`wfm-layer-row__actions${!node.visible || node.locked ? " is-visible" : ""}`}
@@ -455,7 +510,15 @@ export function LayersPanel() {
             <Icon name={node.locked ? "lock" : "unlock"} size={13} />
           </button>
         </span>
-        {isRoot ? <span className="wfm-badge">Primary</span> : null}
+        {isRoot ? (
+          isComponentMode && scene?.variant ? (
+            <span className="wfm-badge wfm-badge--variant" title={scene.variant.name}>
+              {scene.variant.name}
+            </span>
+          ) : (
+            <span className="wfm-badge">Primary</span>
+          )
+        ) : null}
       </div>
     );
 
@@ -469,16 +532,28 @@ export function LayersPanel() {
     );
   };
 
-  const menuNode = menu && page ? findNode(page.root, menu.id) : null;
-  const menuIsRoot = Boolean(menuNode && page && menuNode.id === page.root.id);
+  const menuNode = menu && root ? findNode(root, menu.id) : null;
+  const menuIsRoot = Boolean(menuNode && root && menuNode.id === root.id);
+  const menuInstance = menuNode?.type === "componentInstance" ? menuNode : null;
 
   return (
     <div className="wfm-panel-control">
-      <button type="button" className="wfm-path-button" title="Home">
-        <Icon name="home" size={16} />
-        <span>Home</span>
-        <Icon name="chevron-down" size={14} />
-      </button>
+      {isComponentMode ? (
+        <button
+          type="button"
+          className="wfm-path-button wfm-path-button--component"
+          title={scene?.component?.name ?? "Component"}
+        >
+          <Icon name="component" size={16} className="wfm-path-button__component-glyph" />
+          <span>{scene?.component?.name ?? "Component"}</span>
+        </button>
+      ) : (
+        <button type="button" className="wfm-path-button" title="Home">
+          <Icon name="home" size={16} />
+          <span>Home</span>
+          <Icon name="chevron-down" size={14} />
+        </button>
+      )}
 
       <div className="wfm-search">
         <Icon name="search" size={14} />
@@ -537,6 +612,30 @@ export function LayersPanel() {
           >
             {menuNode.locked ? "Unlock" : "Lock"}
           </button>
+          <div className="wfm-menu__sep" />
+          {menuInstance ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="wfm-menu__item"
+              onClick={() => editMainComponent(menuInstance)}
+            >
+              Edit Main Component
+            </button>
+          ) : null}
+          {!menuIsRoot ? (
+            <button
+              type="button"
+              role="menuitem"
+              className={`wfm-menu__item${isComponentMode ? " is-disabled" : ""}`}
+              disabled={isComponentMode}
+              title={isComponentMode ? "Nested components are next" : undefined}
+              onClick={createComponent}
+            >
+              Create Component
+              <span className="wfm-menu__shortcut">Ctrl+Alt+K</span>
+            </button>
+          ) : null}
           <div className="wfm-menu__sep" />
           <button
             type="button"

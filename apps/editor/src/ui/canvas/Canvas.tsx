@@ -8,6 +8,7 @@
  */
 
 import {
+  type Asset,
   type BoxProps,
   type Breakpoint,
   createFrame,
@@ -18,13 +19,13 @@ import {
   findParent,
   isSelfOrDescendant,
   type NodeId,
-  type Page,
   resolveNodeProps,
   type SceneNode,
+  type SceneTarget,
   type TextContent,
   updateBoxProps,
 } from "@webfm/model";
-import { PageView } from "@webfm/render";
+import { PageView, renderNode } from "@webfm/render";
 import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -34,9 +35,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { activeBreakpointOf, activePageOf, useProjectStore } from "../../state/project-store";
+import { activeBreakpointOf, activeSceneOf, useProjectStore } from "../../state/project-store";
 import { Icon } from "../icons";
 import { type EditorTool, useUIStore } from "../ui-store";
+import { ComponentBar } from "./ComponentBar";
 import "./Canvas.css";
 
 /* --------------------------------------------------------------- geometry */
@@ -291,14 +293,14 @@ function movableNodeIds(
     .map((node) => node.id);
 }
 
-/** Frames receive inserts; anything else inserts into the page root. */
-function creationParent(page: Page, selection: NodeId[]): NodeId {
+/** Frames receive inserts; anything else inserts into the active scene root. */
+function creationParent(root: SceneNode, selection: NodeId[]): NodeId {
   const first = selection[0];
   if (first) {
-    const node = findNode(page.root, first);
+    const node = findNode(root, first);
     if (node?.type === "frame") return node.id;
   }
-  return page.root.id;
+  return root.id;
 }
 
 const DEFAULT_FRAME_SIZE: DeepPartial<BoxProps>["size"] = {
@@ -399,7 +401,7 @@ function createDragKey(kind: string): string {
 interface MoveSession {
   kind: "move";
   pointerId: number;
-  pageId: string;
+  target: SceneTarget;
   breakpointId: string;
   startClient: CanvasPoint;
   startPositions: Map<NodeId, CanvasPoint>;
@@ -410,7 +412,7 @@ interface MoveSession {
 interface ResizeSession {
   kind: "resize";
   pointerId: number;
-  pageId: string;
+  target: SceneTarget;
   breakpointId: string;
   nodeId: NodeId;
   handle: ResizeHandle;
@@ -451,6 +453,7 @@ export function Canvas() {
   const project = useProjectStore((state) => state.project);
   const activePageId = useProjectStore((state) => state.activePageId);
   const activeBreakpointId = useProjectStore((state) => state.activeBreakpointId);
+  const editingComponent = useProjectStore((state) => state.editingComponent);
   const selection = useProjectStore((state) => state.selection);
   const hoveredNodeId = useProjectStore((state) => state.hoveredNodeId);
   const zoom = useProjectStore((state) => state.zoom);
@@ -460,7 +463,8 @@ export function Canvas() {
 
   const tool = useUIStore((state) => state.tool);
 
-  const page = activePageOf(project, activePageId);
+  const scene = activeSceneOf(project, activePageId, editingComponent);
+  const page = scene?.kind === "page" ? scene.page : null;
   const breakpoint = activeBreakpointOf(project, activeBreakpointId);
   const pageWidth = breakpoint?.width ?? 1200;
 
@@ -519,6 +523,7 @@ export function Canvas() {
     project,
     activePageId,
     activeBreakpointId,
+    editingComponent,
     selection,
     zoom,
     pan.x,
@@ -611,14 +616,18 @@ export function Canvas() {
 
       const state = useProjectStore.getState();
       const currentProject = state.project;
-      const currentPage = activePageOf(currentProject, state.activePageId);
-      if (!currentProject || !currentPage || state.selection.length === 0) return;
+      const currentScene = activeSceneOf(
+        currentProject,
+        state.activePageId,
+        state.editingComponent,
+      );
+      if (!currentProject || !currentScene || state.selection.length === 0) return;
 
       const delta = nudgeDelta(event.key, event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP);
       if (!delta) return;
 
       const nodeIds = movableNodeIds(
-        currentPage.root,
+        currentScene.root,
         state.selection,
         state.activeBreakpointId,
         currentProject.breakpoints,
@@ -628,7 +637,7 @@ export function Canvas() {
       event.preventDefault();
 
       const moves = nodeIds.map((nodeId) => {
-        const node = findNode(currentPage.root, nodeId);
+        const node = findNode(currentScene.root, nodeId);
         const position = node
           ? resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints).position
           : { x: 0, y: 0 };
@@ -644,7 +653,7 @@ export function Canvas() {
         (draft) => {
           for (const move of moves) {
             updateBoxProps(draft, {
-              pageId: currentPage.id,
+              ...currentScene.target,
               nodeId: move.nodeId,
               breakpointId: state.activeBreakpointId,
               patch: { position: { x: move.x, y: move.y } },
@@ -722,13 +731,13 @@ export function Canvas() {
   const updateHover = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const state = useProjectStore.getState();
     if (useUIStore.getState().tool !== "select") return;
-    const currentPage = activePageOf(state.project, state.activePageId);
-    if (!currentPage) return;
+    const scene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
+    if (!scene) return;
     const target = event.target as HTMLElement | null;
     const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
     const nodeId = nodeElement?.dataset.nodeId;
-    const node = nodeId ? findNode(currentPage.root, nodeId) : null;
-    state.setHovered(node && node.id !== currentPage.root.id && !node.locked ? node.id : null);
+    const node = nodeId ? findNode(scene.root, nodeId) : null;
+    state.setHovered(node && node.id !== scene.root.id && !node.locked ? node.id : null);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -741,10 +750,10 @@ export function Canvas() {
     const state = useProjectStore.getState();
     state.setHovered(null);
     const currentProject = state.project;
-    const currentPage = activePageOf(currentProject, state.activePageId);
+    const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
     const stage = stageRef.current;
     const viewport = viewportRef.current;
-    if (!currentProject || !currentPage || !stage || !viewport) return;
+    if (!currentProject || !currentScene || !stage || !viewport) return;
     const currentTool = useUIStore.getState().tool;
 
     if (event.button === 1 || spaceRef.current || currentTool === "hand") {
@@ -755,14 +764,14 @@ export function Canvas() {
     const handle = target.dataset.handle;
     if (isResizeHandle(handle) && currentTool === "select" && state.selection.length === 1) {
       const nodeId = state.selection[0];
-      const node = nodeId ? findNode(currentPage.root, nodeId) : null;
-      if (!nodeId || !node || node.locked || node.id === currentPage.root.id) return;
+      const node = nodeId ? findNode(currentScene.root, nodeId) : null;
+      if (!nodeId || !node || node.locked || node.id === currentScene.root.id) return;
       const element = findNodeElement(stage, nodeId);
       if (!element) return;
 
       const props = resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints);
       const elementRect = element.getBoundingClientRect();
-      const parent = findParent(currentPage.root, nodeId);
+      const parent = findParent(currentScene.root, nodeId);
       const movable = parent
         ? resolveNodeProps(parent, state.activeBreakpointId, currentProject.breakpoints).layout
             .mode === "none"
@@ -771,7 +780,7 @@ export function Canvas() {
       sessionRef.current = {
         kind: "resize",
         pointerId: event.pointerId,
-        pageId: currentPage.id,
+        target: currentScene.target,
         breakpointId: state.activeBreakpointId,
         nodeId,
         handle,
@@ -822,7 +831,7 @@ export function Canvas() {
     }
 
     const nodeId = nodeElement.dataset.nodeId;
-    const node = nodeId ? findNode(currentPage.root, nodeId) : null;
+    const node = nodeId ? findNode(currentScene.root, nodeId) : null;
     if (!nodeId || !node || node.locked) return;
 
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
@@ -832,7 +841,7 @@ export function Canvas() {
 
     const moveIds = additive ? [...state.selection, nodeId] : [nodeId];
     const movable = movableNodeIds(
-      currentPage.root,
+      currentScene.root,
       moveIds,
       state.activeBreakpointId,
       currentProject.breakpoints,
@@ -841,7 +850,7 @@ export function Canvas() {
 
     const startPositions = new Map<NodeId, CanvasPoint>();
     for (const id of movable) {
-      const movableNode = findNode(currentPage.root, id);
+      const movableNode = findNode(currentScene.root, id);
       if (!movableNode) continue;
       const props = resolveNodeProps(
         movableNode,
@@ -854,7 +863,7 @@ export function Canvas() {
     sessionRef.current = {
       kind: "move",
       pointerId: event.pointerId,
-      pageId: currentPage.id,
+      target: currentScene.target,
       breakpointId: state.activeBreakpointId,
       startClient: { x: event.clientX, y: event.clientY },
       startPositions,
@@ -913,7 +922,7 @@ export function Canvas() {
         (draft) => {
           for (const [nodeId, start] of session.startPositions) {
             updateBoxProps(draft, {
-              pageId: session.pageId,
+              ...session.target,
               nodeId,
               breakpointId: session.breakpointId,
               patch: {
@@ -955,7 +964,7 @@ export function Canvas() {
       "Resize",
       (draft) => {
         updateBoxProps(draft, {
-          pageId: session.pageId,
+          ...session.target,
           nodeId: session.nodeId,
           breakpointId: session.breakpointId,
           patch,
@@ -968,9 +977,9 @@ export function Canvas() {
   const finishDraw = (session: DrawSession, event: ReactPointerEvent<HTMLDivElement>): void => {
     const state = useProjectStore.getState();
     const currentProject = state.project;
-    const currentPage = activePageOf(currentProject, state.activePageId);
+    const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
     const stage = stageRef.current;
-    if (!currentProject || !currentPage || !stage) return;
+    if (!currentProject || !currentScene || !stage) return;
 
     const stageRect = stage.getBoundingClientRect();
     const endPage = {
@@ -981,7 +990,7 @@ export function Canvas() {
       Math.hypot(event.clientX - session.startClient.x, event.clientY - session.startClient.y) >=
       DRAW_THRESHOLD;
 
-    const parentId = creationParent(currentPage, state.selection);
+    const parentId = creationParent(currentScene.root, state.selection);
     const parentElement = findNodeElement(stage, parentId);
     const origin = parentElement ? pageOriginOf(parentElement, stage, state.zoom) : { x: 0, y: 0 };
 
@@ -1038,14 +1047,20 @@ export function Canvas() {
   const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
     const state = useProjectStore.getState();
     const currentProject = state.project;
-    const currentPage = activePageOf(currentProject, state.activePageId);
-    if (!currentProject || !currentPage) return;
+    const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
+    if (!currentProject || !currentScene) return;
     const target = event.target as HTMLElement | null;
     const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
     const nodeId = nodeElement?.dataset.nodeId;
     if (!nodeElement || !nodeId) return;
-    const node = findNode(currentPage.root, nodeId);
-    if (node?.type !== "text" || node.locked) return;
+    const node = findNode(currentScene.root, nodeId);
+    if (!node || node.locked) return;
+    if (node.type === "componentInstance") {
+      event.preventDefault();
+      state.enterComponent(node.componentId, node.variantId ?? undefined, node.id);
+      return;
+    }
+    if (node.type !== "text") return;
     const props = resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints);
     const stage = stageRef.current;
     const viewport = viewportRef.current;
@@ -1066,26 +1081,26 @@ export function Canvas() {
 
   /* ----------------------------------------------------------------- render */
 
-  if (!project || !page || !breakpoint) return null;
+  if (!project || !scene || !breakpoint) return null;
 
   const stageOffset = centeredStageOffset(viewportWidth, pageWidth, zoom, pan);
   const singleSelectedId = selection.length === 1 ? selection[0] : undefined;
-  const singleSelectedNode = singleSelectedId ? findNode(page.root, singleSelectedId) : null;
+  const singleSelectedNode = singleSelectedId ? findNode(scene.root, singleSelectedId) : null;
   const showHandles =
     singleSelectedNode !== null &&
-    singleSelectedNode.id !== page.root.id &&
+    singleSelectedNode.id !== scene.root.id &&
     !singleSelectedNode.locked;
 
-  const hoveredNode = hoveredNodeId ? findNode(page.root, hoveredNodeId) : null;
+  const hoveredNode = hoveredNodeId ? findNode(scene.root, hoveredNodeId) : null;
   const hoverRect =
     hoveredNode &&
-    hoveredNode.id !== page.root.id &&
+    hoveredNode.id !== scene.root.id &&
     !hoveredNode.locked &&
     !selection.includes(hoveredNode.id)
       ? (rects.get(hoveredNode.id) ?? null)
       : null;
 
-  const editedNode = editing ? findNode(page.root, editing.nodeId) : null;
+  const editedNode = editing ? findNode(scene.root, editing.nodeId) : null;
   const editedText =
     editedNode?.type === "text"
       ? resolveNodeProps(editedNode, activeBreakpointId, project.breakpoints).text
@@ -1118,7 +1133,10 @@ export function Canvas() {
           transform: `scale(${zoom})`,
         }}
       >
-        <div className="wfm-breakpoint-bar" onPointerDown={(event) => event.stopPropagation()}>
+        <div
+          className={`wfm-breakpoint-bar${selection.includes(scene.root.id) ? " is-selected" : ""}`}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <button
             type="button"
             className="wfm-breakpoint-bar__main"
@@ -1165,12 +1183,26 @@ export function Canvas() {
           </div>
         ) : null}
 
-        <PageView
-          project={project}
-          page={page}
-          options={{ breakpointId: activeBreakpointId, mode: "editor" }}
-        />
+        {scene.kind === "page" && page ? (
+          <PageView
+            project={project}
+            page={page}
+            options={{ breakpointId: activeBreakpointId, mode: "editor" }}
+          />
+        ) : (
+          <div className="wfm-canvas-component-page">
+            {renderNode(scene.root, project, {
+              breakpointId: activeBreakpointId,
+              mode: "editor",
+              assetUrl: (asset: Asset) => asset.url,
+            })}
+          </div>
+        )}
       </div>
+
+      {scene.kind === "component" && scene.component && scene.variant ? (
+        <ComponentBar component={scene.component} variant={scene.variant} />
+      ) : null}
 
       <div className="wfm-canvas-overlay" aria-hidden="true">
         {hoverRect ? (

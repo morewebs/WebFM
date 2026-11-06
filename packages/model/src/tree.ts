@@ -1,4 +1,13 @@
-import type { FrameNode, NodeId, Page, PageId, Project, SceneNode } from "./types";
+import type {
+  ComponentId,
+  ComponentInstanceNode,
+  FrameNode,
+  NodeId,
+  Page,
+  PageId,
+  Project,
+  SceneNode,
+} from "./types";
 
 export function getPage(project: Project, pageId: PageId): Page | undefined {
   return project.pages.find((page) => page.id === pageId);
@@ -76,4 +85,47 @@ export function findNodeInProject(
 ): SceneNode | null {
   const page = getPage(project, pageId);
   return page ? findNode(page.root, nodeId) : null;
+}
+
+/**
+ * Finds every component instance that references `componentId`.
+ *
+ * `source` may be the whole project (pages plus every component variant), one
+ * page, or any scene subtree. The project form is what delete protection and
+ * the UI instance counter use.
+ */
+export function findComponentInstances(
+  source: Project | Page | SceneNode,
+  componentId: ComponentId,
+): ComponentInstanceNode[] {
+  const instances: ComponentInstanceNode[] = [];
+
+  const scan = (root: SceneNode): void => {
+    walkNode(root, (node) => {
+      if (node.type === "componentInstance" && node.componentId === componentId) {
+        instances.push(node);
+      }
+    });
+  };
+
+  if (isProjectSource(source)) {
+    for (const page of source.pages) scan(page.root);
+    for (const component of source.components) {
+      for (const variant of component.variants) scan(variant.root);
+    }
+  } else if (isPageSource(source)) {
+    scan(source.root);
+  } else {
+    scan(source);
+  }
+
+  return instances;
+}
+
+function isProjectSource(source: Project | Page | SceneNode): source is Project {
+  return "pages" in source;
+}
+
+function isPageSource(source: Project | Page | SceneNode): source is Page {
+  return "root" in source;
 }

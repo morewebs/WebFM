@@ -84,11 +84,13 @@ Core WebFM implements Canvas only; the other entries exist but are disabled.
   primary breakpoint, centered horizontally in the 1400px canvas area at 100%
   zoom (x=360..1559 in the screenshot). Small blue selection outline and 8px
   corner handles when selected.
-- Breakpoint bar above the page: 30px high, full page width, radius 4, dark blue
-  tint **#161f26** when the page/root is selected, label + play glyph in
-  **#0099ff**, width `1200` in dimmer blue, and a **+** at the right. When
-  nothing is selected the bar is neutral dark (verify exact color on the next
-  pass).
+- Breakpoint bar above the page: 30px high, full page width, radius 8. Two
+  verified states:
+  - **Neutral (nothing selected):** background **#212121**, a 30x30 glyph square
+    **#2a2a2a** with a gray play outline, name **#999**, width **#777**.
+  - **Selected (page root selected):** background **#161f26**, glyph square
+    **#0099ff** with a white play outline, name and width **#0099ff**.
+  The + at the right is accent blue; the bar has a 10px gap above the page.
 - 10px gap between the breakpoint bar and the page.
 - The page root layer is named **Desktop** and carries the **Primary** badge in
   the Layers panel. New pages are 1200x1000 Fixed, white, Overflow Clip.
