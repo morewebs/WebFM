@@ -66,7 +66,8 @@ that were exercised and the bugs found while verifying them.
 
 ## Next slices
 
-Code components, CMS, alignment and more interaction triggers, then cloud/auth.
+Code components, CMS, more interaction triggers, instance style overrides and
+per-variant property defaults, then cloud/auth.
 
 ## Where to look
 
