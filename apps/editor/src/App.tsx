@@ -5,6 +5,7 @@ import { installShortcuts } from "./keyboard/registry";
 import { useProjectStore } from "./state/project-store";
 import { Canvas } from "./ui/canvas/Canvas";
 import { PublishDialog } from "./ui/dialogs/PublishDialog";
+import { ContextMenu } from "./ui/menus/ContextMenu";
 import { Preview } from "./ui/preview/Preview";
 import { BottomBar } from "./ui/shell/BottomBar";
 import { LeftSidebar } from "./ui/shell/LeftSidebar";
@@ -147,6 +148,7 @@ export function App() {
 
       <BottomBar />
 
+      <ContextMenu />
       {publishOpen ? <PublishDialog /> : null}
       {previewOpen ? <Preview /> : null}
     </div>

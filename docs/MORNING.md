@@ -24,8 +24,9 @@ Pages, Frame/Stack/Text/Image, infinite canvas with pan/zoom, insert, select,
 move, 8-handle resize, text editing, layers tree (rename, hide, lock, drag),
 Style panel (breakpoint position/size, layout, typography, fill/border/radius/
 shadow/opacity, overflow), align/distribute for free-layout siblings (buttons
-and Alt shortcuts), text-layer auto-rename, responsive breakpoints with cascading
-overrides, undo/redo, preview, assets, publish and persistence.
+and Alt shortcuts), text-layer auto-rename, Framer's custom context menus
+(node/layer and empty canvas), responsive breakpoints with cascading overrides,
+undo/redo, preview, assets, publish and persistence.
 
 **Publishing** — a `PublishAdapter` boundary; the static exporter renders every
 page, copies assets and writes `index.html`, route folders, `styles.css` and a

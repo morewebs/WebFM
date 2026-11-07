@@ -163,6 +163,31 @@ Extracted with `getComputedStyle` from the live editor on 2026-11-06.
 - **Insert panel:** nav rail 256px, detail column 154px overlaying the canvas,
   category rows 40px high, category glyphs 12x12, section titles 12px/550 #999.
 
+
+## Context menus (verified)
+
+The same custom panel opens when right-clicking a layer row or a canvas node,
+and selects that node first. Empty canvas has its own short menu.
+
+**Node menu** — search field ("Type to search…"), then: Add to agent, Edit
+breakpoint…, Add breakpoint › (Tablet 810 / Phone 390 / Custom…), Select › (Top
+parent / Parent ESC / All Ctrl+A / Siblings Ctrl+Shift+A / Children / Text
+layers / Layers using this background), Align › (the 8 align/distribute actions
+plus target options), Copy › (Copy / Copy style / Copy fill / Copy link / Copy
+CSS / Copy SVG / Copy text / Copy guides / Copy effects / Copy cursor / Copy
+node ID), Paste › (Paste / Paste style / Paste fill / Paste in place / Paste
+effects / Paste cursor / Paste guides), Move › (front/forward/backward/back),
+Duplicate Ctrl+D, Delete Del, Rename Ctrl+R, Auto rename Alt+R, Lock Ctrl+L,
+Hide Ctrl+;, Overflow › (Clip / Visible / Hidden / Scroll), Add frame Shift+F,
+Add stack Shift+A, Remove frame Ctrl+Del, Set as default fill.
+
+**Empty canvas menu** — Paste Ctrl+V, Cursor chat /, Quick actions… Ctrl+K,
+Zoom to 100% Shift+0, Zoom to fit Shift+1, Sort layers alphabetically.
+
+Panel: #212121, radius 10, 30px rows, 12px text, right-aligned shortcuts,
+8px chevrons, separators; the focused search field is #161f26; disabled rows are
+dimmed. Submenus open to the right and flip left near the edge.
+
 ## Still unverified / next pass
 
 - Breakpoint bar neutral color and hover states.
