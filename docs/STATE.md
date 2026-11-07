@@ -167,7 +167,9 @@ CMS.
   160→40 for deltaY 120) while Cmd/Ctrl+wheel zoomed; Cmd+= zoomed to 125%
   around the centre; dragging 480,380→920,660 selected the four intersecting
   top-level layers while a plain click cleared the selection; hovering a layer
-  row outlined that layer on the canvas; ArrowUp stepped Position X 140→141.
+  row outlined that layer on the canvas; ArrowUp stepped Position X 140→141;
+  Ctrl+C then Ctrl+V added one layer with a fresh id and selected it, and
+  Ctrl+A selected all nine top-level layers.
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
   overrides, breakpoint bar always blue, 1px shell offsets, variant node ids

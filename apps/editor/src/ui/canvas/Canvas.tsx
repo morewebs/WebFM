@@ -930,6 +930,27 @@ export function Canvas() {
         return;
       }
 
+      const commandModifier = event.metaKey || event.ctrlKey;
+      if (commandModifier && !event.shiftKey && !event.altKey) {
+        const state = useProjectStore.getState();
+        if (event.key.toLowerCase() === "c") {
+          if (state.selection.length === 0) return;
+          event.preventDefault();
+          state.copySelection();
+          return;
+        }
+        if (event.key.toLowerCase() === "v") {
+          event.preventDefault();
+          state.pasteClipboard();
+          return;
+        }
+        if (event.key.toLowerCase() === "a") {
+          event.preventDefault();
+          state.selectAll();
+          return;
+        }
+      }
+
       if (event.code === "Space" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         spaceRef.current = true;
         setSpaceDown(true);

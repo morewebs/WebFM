@@ -349,6 +349,35 @@ describe("project store", () => {
     expect(store.getState().selection).toEqual([rootId]);
   });
 
+  it("copies and pastes layers with fresh ids, and selects all", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().selectAll();
+    expect(store.getState().selection).toEqual([childId]);
+
+    store.getState().select(childId);
+    expect(store.getState().copySelection()).toBe(1);
+
+    const pasted = store.getState().pasteClipboard();
+    expect(pasted).toHaveLength(1);
+    expect(pasted[0]).not.toBe(childId);
+    const saved = store.getState().project;
+    expect(saved).not.toBeNull();
+    const root = saved!.pages[0]!.root as FrameNode;
+    const clone = findNode(root, pasted[0]!);
+    expect(clone?.type).toBe("frame");
+    expect(clone?.name).toBe("Card");
+    expect(store.getState().selection).toEqual(pasted);
+
+    const second = store.getState().pasteClipboard();
+    expect(second[0]).not.toBe(pasted[0]);
+    const latestRoot = store.getState().project!.pages[0]!.root as FrameNode;
+    expect(latestRoot.children).toHaveLength(3);
+  });
+
   it("writes box updates into the active breakpoint override", async () => {
     const { project, childId } = fixture();
     const { api } = makeApi(project);

@@ -41,6 +41,7 @@ import {
   type ImageProps,
   insertComponentInstance as insertComponentInstanceOperation,
   insertNode as insertNodeOperation,
+  cloneNodesForPaste,
   isSelfOrDescendant,
   type NodeId,
   normalizeProject,
@@ -156,6 +157,12 @@ export interface ProjectStoreState {
   select(nodeId: NodeId, additive?: boolean): void;
   selectMany(nodeIds: NodeId[]): void;
   clearSelection(): void;
+  /** Selects every unlocked top-level layer of the active scene. */
+  selectAll(): void;
+  /** Snapshots the selection (top-level layers) for a later paste. */
+  copySelection(): number;
+  /** Pastes the snapshot with fresh ids; returns the new node ids. */
+  pasteClipboard(): NodeId[];
   setHovered(nodeId: NodeId | null): void;
   setZoom(zoom: number): void;
   setPan(pan: Pan): void;
@@ -419,6 +426,12 @@ function textLayerMatchesStyle(
 }
 
 export type ProjectStore = UseBoundStore<StoreApi<ProjectStoreState>>;
+
+/**
+ * In-session layer clipboard. Like Framer's, it survives selection changes and
+ * scene switches. Paste deep-clones with fresh ids each time.
+ */
+let clipboardNodes: SceneNode[] | null = null;
 
 export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
   const api = deps.api ?? defaultApi;
@@ -843,6 +856,48 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
 
       clearSelection() {
         set({ selection: [] });
+      },
+
+      selectAll() {
+        const scene = currentScene();
+        if (!scene || scene.root.type !== "frame") return;
+        set({
+          selection: scene.root.children
+            .filter((child) => child.visible && !child.locked)
+            .map((child) => child.id),
+        });
+      },
+
+      copySelection() {
+        const state = get();
+        const scene = currentScene();
+        if (!scene) return 0;
+        const topLevel = topLevelSelection(scene.root, state.selection);
+        if (topLevel.length === 0) return 0;
+        const nodes: SceneNode[] = [];
+        for (const nodeId of topLevel) {
+          const node = findNode(scene.root, nodeId);
+          if (node) nodes.push(structuredClone(node));
+        }
+        clipboardNodes = nodes.length > 0 ? nodes : null;
+        return nodes.length;
+      },
+
+      pasteClipboard() {
+        const scene = currentScene();
+        if (!scene || scene.root.type !== "frame" || !clipboardNodes) return [];
+        const clones = cloneNodesForPaste(clipboardNodes);
+        applyRecipe("Paste", (draft) => {
+          for (const node of clones) {
+            insertNodeOperation(
+              draft,
+              withTarget(scene.target, { parentId: scene.root.id, node }),
+            );
+          }
+        });
+        const ids = clones.map((node) => node.id);
+        set({ selection: ids });
+        return ids;
       },
 
       setHovered(nodeId) {

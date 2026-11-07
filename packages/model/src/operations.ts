@@ -222,6 +222,14 @@ function cloneWithFreshIds<T extends SceneNode>(node: T): T {
   return copy;
 }
 
+/**
+ * Detached deep clones with brand-new node ids. Clipboard paste calls this per
+ * paste so pasting the same snapshot twice never reuses ids.
+ */
+export function cloneNodesForPaste(nodes: SceneNode[]): SceneNode[] {
+  return nodes.map((node) => cloneWithFreshIds(detachNode(node)));
+}
+
 /* --------------------------------------------------------------- responsive */
 
 interface ResponsiveDraft<P extends object> {

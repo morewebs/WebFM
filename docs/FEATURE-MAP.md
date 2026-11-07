@@ -67,6 +67,7 @@ outside this project's scope.
 | --- | --- | --- |
 | Pan/zoom, breakpoint bar, page root | Done | Wheel pans, Cmd/Ctrl+wheel zooms around the pointer, Cmd/Ctrl +/- zooms around the centre. |
 | Select/hover/move/resize/nudge | Done | |
+| Clipboard | Done | Cmd/Ctrl+C and V copy/paste layers with fresh ids; Cmd/Ctrl+A selects every unlocked top-level layer. |
 | Text editing (plain text) | Partial | The Text tool starts an empty layer with a caret; the box grows as you type and the layer beneath is hidden while editing. Enter adds a hard line break, Escape commits, and an empty layer is discarded on exit; double-click places the caret at the click point. No rich text spans, links, lists or paragraph spacing. |
 | Draw tools: frame, stack, grid, oval, text, image | Done | |
 | Shape tools: rectangle, rounded, polygon, star | Partial | Rectangle (R), Rounded (U) and Oval (O) work; polygon/star/pen missing. |
