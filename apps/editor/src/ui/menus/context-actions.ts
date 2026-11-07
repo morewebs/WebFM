@@ -492,6 +492,182 @@ export function sortLayersAlphabetically(): void {
   });
 }
 
+/* ------------------------------------------------------------- wrapping */
+
+/**
+ * Grouping/wrapping actions read the live canvas so the new Frame or Stack
+ * matches the layers' on-screen bounds. App and the menus call these functions
+ * directly; there are no window events to install.
+ */
+
+interface SceneRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function findCanvasNodeElement(stage: HTMLElement, nodeId: NodeId): HTMLElement | null {
+  const elements = stage.querySelectorAll<HTMLElement>("[data-node-id]");
+  for (const element of elements) {
+    if (element.dataset.nodeId === nodeId) return element;
+  }
+  return null;
+}
+
+/** Measures an element in scene coordinates (unscaled stage space). */
+function sceneRectOf(
+  element: HTMLElement,
+  stageRect: DOMRect,
+  zoom: number,
+): SceneRect {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: (rect.left - stageRect.left) / zoom,
+    y: (rect.top - stageRect.top) / zoom,
+    width: rect.width / zoom,
+    height: rect.height / zoom,
+  };
+}
+
+function borderOffsets(element: HTMLElement): { left: number; top: number } {
+  const style = window.getComputedStyle(element);
+  return {
+    left: Number.parseFloat(style.borderLeftWidth) || 0,
+    top: Number.parseFloat(style.borderTopWidth) || 0,
+  };
+}
+
+/**
+ * Wraps the current top-level selection in a Frame (`kind: "frame"`) or a
+ * vertical Stack. Measures the selected node elements and their shared parent,
+ * then hands the union bounds and per-node positions to the store.
+ */
+export function wrapSelection(kind: "frame" | "stack"): void {
+  if (typeof document === "undefined") return;
+  const state = useProjectStore.getState();
+  const scene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
+  if (!state.project || !scene) return;
+  const zoom = state.zoom;
+  if (!Number.isFinite(zoom) || zoom <= 0) return;
+
+  const nodeIds = topLevelNodeIds(scene.root, state.selection);
+  if (nodeIds.length === 0) return;
+
+  const firstId = nodeIds[0];
+  const firstNode = firstId ? findNode(scene.root, firstId) : null;
+  const parent = firstNode ? findParent(scene.root, firstNode.id) : null;
+  if (!parent) return;
+
+  // The model rejects a cross-parent wrap; the DOM is only meaningful when all
+  // selected layers share the same parent element.
+  for (const nodeId of nodeIds) {
+    const node = findNode(scene.root, nodeId);
+    const candidate = node ? findParent(scene.root, nodeId) : null;
+    if (!candidate || candidate.id !== parent.id) return;
+  }
+
+  const stage = document.querySelector<HTMLElement>(".wfm-canvas-stage");
+  if (!stage) return;
+  const parentElement = findCanvasNodeElement(stage, parent.id);
+  if (!parentElement) return;
+
+  const stageRect = stage.getBoundingClientRect();
+  const parentRect = sceneRectOf(parentElement, stageRect, zoom);
+  const border = borderOffsets(parentElement);
+
+  const measured: Array<{ id: NodeId; rect: SceneRect }> = [];
+  for (const nodeId of nodeIds) {
+    const element = findCanvasNodeElement(stage, nodeId);
+    if (!element) return;
+    const rect = sceneRectOf(element, stageRect, zoom);
+    measured.push({
+      id: nodeId,
+      rect: {
+        x: rect.x - parentRect.x - border.left,
+        y: rect.y - parentRect.y - border.top,
+        width: rect.width,
+        height: rect.height,
+      },
+    });
+  }
+
+  const first = measured[0];
+  if (!first) return;
+  let minX = first.rect.x;
+  let minY = first.rect.y;
+  let maxX = first.rect.x + first.rect.width;
+  let maxY = first.rect.y + first.rect.height;
+  for (const item of measured.slice(1)) {
+    minX = Math.min(minX, item.rect.x);
+    minY = Math.min(minY, item.rect.y);
+    maxX = Math.max(maxX, item.rect.x + item.rect.width);
+    maxY = Math.max(maxY, item.rect.y + item.rect.height);
+  }
+
+  const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  const positions: Record<NodeId, { x: number; y: number }> = {};
+  for (const item of measured) {
+    positions[item.id] = { x: item.rect.x - minX, y: item.rect.y - minY };
+  }
+
+  state.wrapSelection(kind, bounds, positions);
+}
+
+/**
+ * Removes a frame wrapper. `nodeId` defaults to the selected frame, or the
+ * selected layer's parent frame. Children are measured relative to the frame's
+ * parent so their on-screen position survives the unwrap.
+ */
+export function unwrapSelection(nodeId?: NodeId): void {
+  if (typeof document === "undefined") return;
+  const state = useProjectStore.getState();
+  const scene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
+  if (!state.project || !scene) return;
+  const zoom = state.zoom;
+  if (!Number.isFinite(zoom) || zoom <= 0) return;
+
+  const topLevel = topLevelNodeIds(scene.root, state.selection);
+  let frameId = nodeId ?? topLevel[0];
+  if (frameId === undefined) return;
+
+  const node = findNode(scene.root, frameId);
+  if (!node || node.id === scene.root.id) return;
+  if (node.type !== "frame") {
+    frameId = findParent(scene.root, node.id)?.id;
+    if (frameId === undefined || frameId === scene.root.id) return;
+  }
+
+  const frame = findNode(scene.root, frameId);
+  const parent = findParent(scene.root, frameId);
+  if (!frame || frame.type !== "frame" || !parent) return;
+
+  const stage = document.querySelector<HTMLElement>(".wfm-canvas-stage");
+  if (!stage) return;
+  const parentElement = findCanvasNodeElement(stage, parent.id);
+  if (!parentElement) {
+    // Without a measurable parent the model still rebases from the frame origin.
+    useProjectStore.getState().unwrapSelection(frameId);
+    return;
+  }
+
+  const stageRect = stage.getBoundingClientRect();
+  const parentRect = sceneRectOf(parentElement, stageRect, zoom);
+  const border = borderOffsets(parentElement);
+  const childPositions: Record<NodeId, { x: number; y: number }> = {};
+  for (const child of frame.children) {
+    const element = findCanvasNodeElement(stage, child.id);
+    if (!element) continue;
+    const rect = sceneRectOf(element, stageRect, zoom);
+    childPositions[child.id] = {
+      x: rect.x - parentRect.x - border.left,
+      y: rect.y - parentRect.y - border.top,
+    };
+  }
+
+  useProjectStore.getState().unwrapSelection(frameId, childPositions);
+}
+
 /* ------------------------------------------------------------- menu entries */
 
 export interface MenuEntryItem {

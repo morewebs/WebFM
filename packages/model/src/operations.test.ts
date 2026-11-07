@@ -26,6 +26,8 @@ import {
   updateNode,
   updatePage,
   updateTextProps,
+  unwrapNode,
+  wrapNodes,
 } from "./operations";
 import { collectNodes, findNode } from "./tree";
 import type {
@@ -1005,5 +1007,365 @@ describe("interactions", () => {
     expect(getNode(restored.project, "hero").interactions?.map((entry) => entry.id)).toEqual([
       interactionId,
     ]);
+  });
+});
+
+describe("wrapping", () => {
+  const base = createProject();
+  const { pageId, rootId } = ids(base);
+
+  function seedSiblings(): Project {
+    return addToRoot(base, [
+      createFrame({
+        id: "a",
+        name: "A",
+        props: {
+          position: { x: 10, y: 20 },
+          size: { width: { mode: "fixed", value: 100 }, height: { mode: "fixed", value: 50 } },
+        },
+      }),
+      createFrame({
+        id: "b",
+        name: "B",
+        props: {
+          position: { x: 200, y: 60 },
+          size: { width: { mode: "fixed", value: 80 }, height: { mode: "fixed", value: 40 } },
+        },
+      }),
+    ]);
+  }
+
+  it("wraps two siblings with bounds and explicit positions", () => {
+    const seeded = seedSiblings();
+    const { project, result } = run(seeded, (draft) =>
+      wrapNodes(draft, {
+        pageId,
+        nodeIds: ["a", "b"],
+        kind: "frame",
+        bounds: { x: 5, y: 5, width: 300, height: 200 },
+        positions: { a: { x: 6, y: 8 }, b: { x: 9, y: 10 } },
+      }),
+    );
+
+    const root = project.pages[0]!.root;
+    expect(root.children.map((node) => node.id)).toEqual([result]);
+
+    const frame = getFrameNode(project, result);
+    expect(frame.name).toBe("Frame");
+    expect(frame.responsive.base.position).toMatchObject({ x: 5, y: 5 });
+    expect(frame.responsive.base.size.width).toEqual({ mode: "fixed", value: 300 });
+    expect(frame.responsive.base.size.height).toEqual({ mode: "fixed", value: 200 });
+    expect(frame.responsive.base.style.fill).toBeNull();
+    expect(frame.responsive.base.style.overflow).toBe("visible");
+    expect(frame.responsive.base.layout.mode).toBe("none");
+    expect(frame.children.map((node) => node.id)).toEqual(["a", "b"]);
+    expect(getFrameNode(project, "a").responsive.base.position).toMatchObject({ x: 6, y: 8 });
+    expect(getFrameNode(project, "b").responsive.base.position).toMatchObject({ x: 9, y: 10 });
+  });
+
+  it("wraps three siblings with explicit positions in parent order", () => {
+    const seeded = addToRoot(base, [
+      createFrame({ id: "a", props: { position: { x: 0, y: 0 } } }),
+      createFrame({ id: "b", props: { position: { x: 10, y: 10 } } }),
+      createFrame({ id: "c", props: { position: { x: 20, y: 20 } } }),
+    ]);
+
+    const { project, result } = run(seeded, (draft) =>
+      wrapNodes(draft, {
+        pageId,
+        nodeIds: ["c", "a", "b"],
+        kind: "frame",
+        bounds: { x: 0, y: 0, width: 320, height: 240 },
+        positions: { a: { x: 1, y: 2 }, b: { x: 3, y: 4 }, c: { x: 5, y: 6 } },
+      }),
+    );
+
+    const frame = getFrameNode(project, result);
+    expect(frame.children.map((node) => node.id)).toEqual(["a", "b", "c"]);
+    expect(frame.children.map((node) => node.responsive.base.position)).toMatchObject([
+      { x: 1, y: 2 },
+      { x: 3, y: 4 },
+      { x: 5, y: 6 },
+    ]);
+  });
+
+  it("computes the union bounds and rebases base positions", () => {
+    const seeded = seedSiblings();
+    const { project, result } = run(seeded, (draft) =>
+      wrapNodes(draft, { pageId, nodeIds: ["a", "b"], kind: "frame" }),
+    );
+
+    const frame = getFrameNode(project, result);
+    // min (10, 20); extent to (200 + 80, 60 + 40).
+    expect(frame.responsive.base.position).toMatchObject({ x: 10, y: 20 });
+    expect(frame.responsive.base.size.width).toEqual({ mode: "fixed", value: 270 });
+    expect(frame.responsive.base.size.height).toEqual({ mode: "fixed", value: 80 });
+    expect(getFrameNode(project, "a").responsive.base.position).toMatchObject({ x: 0, y: 0 });
+    expect(getFrameNode(project, "b").responsive.base.position).toMatchObject({ x: 190, y: 40 });
+  });
+
+  it("keeps parent order and inserts the wrapper at the lowest index", () => {
+    const seeded = addToRoot(base, [
+      createFrame({ id: "x", name: "X" }),
+      createFrame({ id: "a", name: "A" }),
+      createFrame({ id: "b", name: "B" }),
+      createFrame({ id: "c", name: "C" }),
+    ]);
+
+    const { project, result } = run(seeded, (draft) =>
+      wrapNodes(draft, { pageId, nodeIds: ["c", "a"], kind: "frame" }),
+    );
+
+    const root = project.pages[0]!.root;
+    expect(root.children.map((node) => node.id)).toEqual(["x", result, "b"]);
+    expect(getFrameNode(project, result).children.map((node) => node.id)).toEqual(["a", "c"]);
+  });
+
+  it("creates a vertical stack wrapper and honours a custom name", () => {
+    const seeded = seedSiblings();
+    const stacked = run(seeded, (draft) =>
+      wrapNodes(draft, {
+        pageId,
+        nodeIds: ["a", "b"],
+        kind: "stack",
+        bounds: { x: 0, y: 0, width: 400, height: 400 },
+      }),
+    );
+
+    const stack = getFrameNode(stacked.project, stacked.result);
+    expect(stack.name).toBe("Stack");
+    expect(stack.responsive.base.layout.mode).toBe("stack");
+    expect(stack.responsive.base.layout.direction).toBe("vertical");
+
+    const named = run(seeded, (draft) =>
+      wrapNodes(draft, { pageId, nodeIds: ["a"], kind: "frame", name: "Card" }),
+    );
+    expect(getFrameNode(named.project, named.result).name).toBe("Card");
+  });
+
+  it("rebases responsive position overrides and keeps unrelated overrides", () => {
+    const seeded = addToRoot(base, [
+      createFrame({
+        id: "a",
+        props: {
+          position: { x: 10, y: 20 },
+          size: { width: { mode: "fixed", value: 100 }, height: { mode: "fixed", value: 50 } },
+        },
+      }),
+    ]);
+    const withOverride = run(seeded, (draft) => {
+      const node = findNode(draft.pages[0]!.root, "a");
+      if (!node) throw new Error("Missing node");
+      node.responsive.overrides.bp_phone = {
+        position: { x: 15, y: 25 },
+        size: { width: { mode: "fixed", value: 200 } },
+      };
+    }).project;
+
+    const { project, result } = run(withOverride, (draft) =>
+      wrapNodes(draft, {
+        pageId,
+        nodeIds: ["a"],
+        kind: "frame",
+        bounds: { x: 10, y: 20, width: 100, height: 50 },
+      }),
+    );
+
+    expect(result).toBeTruthy();
+    const override = getFrameNode(project, "a").responsive.overrides.bp_phone;
+    expect(override?.position).toMatchObject({ x: 5, y: 5 });
+    expect(override?.size).toMatchObject({ width: { mode: "fixed", value: 200 } });
+  });
+
+  it("unwraps a frame and restores approximate positions", () => {
+    const seeded = seedSiblings();
+    const wrapped = run(seeded, (draft) =>
+      wrapNodes(draft, {
+        pageId,
+        nodeIds: ["a", "b"],
+        kind: "frame",
+        bounds: { x: 5, y: 5, width: 300, height: 200 },
+        positions: { a: { x: 6, y: 8 }, b: { x: 9, y: 10 } },
+      }),
+    );
+
+    const { project, result } = run(wrapped.project, (draft) =>
+      unwrapNode(draft, { pageId, nodeId: wrapped.result }),
+    );
+
+    expect(result).toEqual(["a", "b"]);
+    const root = project.pages[0]!.root;
+    expect(root.children.map((node) => node.id)).toEqual(["a", "b"]);
+    expect(getFrameNode(project, "a").responsive.base.position).toMatchObject({ x: 11, y: 13 });
+    expect(getFrameNode(project, "b").responsive.base.position).toMatchObject({ x: 14, y: 15 });
+  });
+
+  it("uses supplied child positions when unwrapping", () => {
+    const seeded = seedSiblings();
+    const wrapped = run(seeded, (draft) =>
+      wrapNodes(draft, {
+        pageId,
+        nodeIds: ["a", "b"],
+        kind: "frame",
+        bounds: { x: 5, y: 5, width: 300, height: 200 },
+      }),
+    );
+
+    const { project, result } = run(wrapped.project, (draft) =>
+      unwrapNode(draft, {
+        pageId,
+        nodeId: wrapped.result,
+        childPositions: { a: { x: 1, y: 2 } },
+      }),
+    );
+
+    expect(result).toEqual(["a", "b"]);
+    expect(getFrameNode(project, "a").responsive.base.position).toMatchObject({ x: 1, y: 2 });
+    // b keeps the computed offset: frame origin (5, 5) + local (195, 55).
+    expect(getFrameNode(project, "b").responsive.base.position).toMatchObject({ x: 200, y: 60 });
+  });
+
+  it("wraps and unwraps a single layer", () => {
+    const seeded = addToRoot(base, [
+      createFrame({
+        id: "a",
+        props: {
+          position: { x: 10, y: 20 },
+          size: { width: { mode: "fixed", value: 100 }, height: { mode: "fixed", value: 50 } },
+        },
+      }),
+    ]);
+
+    const wrapped = run(seeded, (draft) =>
+      wrapNodes(draft, { pageId, nodeIds: ["a"], kind: "frame" }),
+    );
+    const frame = getFrameNode(wrapped.project, wrapped.result);
+    expect(frame.responsive.base.position).toMatchObject({ x: 10, y: 20 });
+    expect(getFrameNode(wrapped.project, "a").responsive.base.position).toMatchObject({
+      x: 0,
+      y: 0,
+    });
+
+    const { project, result } = run(wrapped.project, (draft) =>
+      unwrapNode(draft, { pageId, nodeId: wrapped.result }),
+    );
+    expect(result).toEqual(["a"]);
+    expect(project.pages[0]!.root.children.map((node) => node.id)).toEqual(["a"]);
+    expect(getFrameNode(project, "a").responsive.base.position).toMatchObject({ x: 10, y: 20 });
+  });
+
+  it("wraps nodes in a component variant target", () => {
+    const fixture = componentFixture();
+    const variant = variantOf(fixture.project, fixture.componentId, fixture.variantId);
+    const childId = variant.root.children[0]?.id;
+    if (!childId) throw new Error("Variant has no child");
+
+    const wrapped = run(fixture.project, (draft) =>
+      wrapNodes(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeIds: [childId],
+        kind: "frame",
+        bounds: { x: 0, y: 0, width: 120, height: 60 },
+      }),
+    );
+
+    const wrappedVariant = variantOf(wrapped.project, fixture.componentId, fixture.variantId);
+    expect(wrappedVariant.root.children.map((node) => node.id)).toEqual([wrapped.result]);
+    expect(wrappedVariant.root.children[0]?.type).toBe("frame");
+
+    const unwrapped = run(wrapped.project, (draft) =>
+      unwrapNode(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: wrapped.result,
+      }),
+    );
+    const restored = variantOf(unwrapped.project, fixture.componentId, fixture.variantId);
+    expect(unwrapped.result).toEqual([childId]);
+    expect(restored.root.children.map((node) => node.id)).toEqual([childId]);
+  });
+
+  it("throws for empty, root, cross-parent and unknown selections", () => {
+    const seeded = run(seedSiblings(), (draft) => {
+      insertNode(draft, {
+        pageId,
+        parentId: "a",
+        node: createFrame({ id: "nested", name: "Nested" }),
+      });
+    }).project;
+
+    expect(() =>
+      run(seeded, (draft) => wrapNodes(draft, { pageId, nodeIds: [], kind: "frame" })),
+    ).toThrow(/at least one layer/);
+    expect(() =>
+      run(seeded, (draft) => wrapNodes(draft, { pageId, nodeIds: [rootId], kind: "frame" })),
+    ).toThrow(/page root/);
+    expect(() =>
+      run(seeded, (draft) =>
+        wrapNodes(draft, { pageId, nodeIds: ["a", "nested"], kind: "frame" }),
+      ),
+    ).toThrow(/share the same parent/);
+    expect(() =>
+      run(seeded, (draft) => wrapNodes(draft, { pageId, nodeIds: ["missing"], kind: "frame" })),
+    ).toThrow(/not found/);
+  });
+
+  it("throws when unwrapping the root, a missing node or a non-frame", () => {
+    const seeded = run(seedSiblings(), (draft) => {
+      insertNode(draft, {
+        pageId,
+        parentId: "a",
+        node: createText({ id: "label", content: "Label" }),
+      });
+    }).project;
+
+    expect(() => run(seeded, (draft) => unwrapNode(draft, { pageId, nodeId: rootId }))).toThrow(
+      /page root/,
+    );
+    expect(() => run(seeded, (draft) => unwrapNode(draft, { pageId, nodeId: "missing" }))).toThrow(
+      /not found/,
+    );
+    expect(() => run(seeded, (draft) => unwrapNode(draft, { pageId, nodeId: "label" }))).toThrow(
+      /not a frame/,
+    );
+  });
+
+  it("returns no children for an empty frame", () => {
+    const seeded = addToRoot(base, [
+      createFrame({ id: "empty", props: { position: { x: 30, y: 40 } } }),
+    ]);
+    const { project, result } = run(seeded, (draft) =>
+      unwrapNode(draft, { pageId, nodeId: "empty" }),
+    );
+    expect(result).toEqual([]);
+    expect(project.pages[0]!.root.children).toHaveLength(0);
+  });
+
+  it("undoes and redoes wrapping through history", () => {
+    const seeded = seedSiblings();
+    let history = createHistory(seeded);
+    let frameId = "";
+
+    history = applyOperation(history, "Add frame", (draft) => {
+      frameId = wrapNodes(draft, {
+        pageId,
+        nodeIds: ["a", "b"],
+        kind: "frame",
+        bounds: { x: 5, y: 5, width: 300, height: 200 },
+      });
+    });
+    expect(history.project.pages[0]!.root.children.map((node) => node.id)).toEqual([frameId]);
+
+    const undone = undo(history);
+    expect(undone.project.pages[0]!.root.children.map((node) => node.id)).toEqual(["a", "b"]);
+
+    const redone = redo(undone);
+    expect(redone.project.pages[0]!.root.children.map((node) => node.id)).toEqual([frameId]);
+
+    const unwrapped = applyOperation(redone, "Remove frame", (draft) => {
+      unwrapNode(draft, { pageId, nodeId: frameId });
+    });
+    expect(unwrapped.project.pages[0]!.root.children.map((node) => node.id)).toEqual(["a", "b"]);
   });
 });

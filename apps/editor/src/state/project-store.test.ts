@@ -689,4 +689,163 @@ describe("project store", () => {
     expect(root ? findNode(root, "node_banner") : null).toBeNull();
     expect(store.getState().selection).toEqual([rootId]);
   });
+
+  it("wraps two siblings into one frame in one history entry and undoes it", async () => {
+    const { project, childId, rootId } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(
+      createFrame({
+        id: "node_badge",
+        name: "Badge",
+        props: {
+          position: { x: 40, y: 50 },
+          size: { width: { mode: "fixed", value: 80 }, height: { mode: "fixed", value: 24 } },
+        },
+      }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    store.getState().select("node_badge", true);
+    const frameId = store.getState().wrapSelection(
+      "frame",
+      { x: 0, y: 0, width: 200, height: 120 },
+      { [childId]: { x: 0, y: 0 }, node_badge: { x: 40, y: 50 } },
+    );
+
+    expect(frameId).not.toBeNull();
+    const state = store.getState();
+    expect(frameAt(state.project, rootId).children.map((node) => node.id)).toEqual([frameId]);
+    const frame = frameAt(state.project, frameId!);
+    expect(frame.name).toBe("Frame");
+    expect(frame.responsive.base.size.width).toEqual({ mode: "fixed", value: 200 });
+    expect(frame.children.map((node) => node.id)).toEqual([childId, "node_badge"]);
+    expect(frameAt(state.project, childId).responsive.base.position).toMatchObject({ x: 0, y: 0 });
+    expect(frameAt(state.project, "node_badge").responsive.base.position).toMatchObject({
+      x: 40,
+      y: 50,
+    });
+    expect(state.selection).toEqual([frameId]);
+    expect(state.history?.past).toHaveLength(1);
+    expect(state.history?.past[0]?.label).toBe("Wrap in frame");
+
+    store.getState().undo();
+    const undone = store.getState();
+    expect(frameAt(undone.project, rootId).children.map((node) => node.id)).toEqual([
+      childId,
+      "node_badge",
+    ]);
+    expect(frameAt(undone.project, childId).responsive.base.position).toMatchObject({ x: 0, y: 0 });
+    expect(frameAt(undone.project, "node_badge").responsive.base.position).toMatchObject({
+      x: 40,
+      y: 50,
+    });
+  });
+
+  it("unwraps the selected frame and restores child positions", async () => {
+    const { project, childId, rootId } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(
+      createFrame({
+        id: "node_badge",
+        name: "Badge",
+        props: {
+          position: { x: 40, y: 50 },
+          size: { width: { mode: "fixed", value: 80 }, height: { mode: "fixed", value: 24 } },
+        },
+      }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().selectMany([childId, "node_badge"]);
+    const frameId = store.getState().wrapSelection(
+      "stack",
+      { x: 0, y: 0, width: 200, height: 120 },
+      { [childId]: { x: 0, y: 0 }, node_badge: { x: 40, y: 50 } },
+    )!;
+
+    const moved = store.getState().unwrapSelection(frameId);
+    expect(moved).toEqual([childId, "node_badge"]);
+    const state = store.getState();
+    expect(frameAt(state.project, rootId).children.map((node) => node.id)).toEqual([
+      childId,
+      "node_badge",
+    ]);
+    expect(frameAt(state.project, childId).responsive.base.position).toMatchObject({ x: 0, y: 0 });
+    expect(frameAt(state.project, "node_badge").responsive.base.position).toMatchObject({
+      x: 40,
+      y: 50,
+    });
+    expect(state.selection).toEqual([childId, "node_badge"]);
+    expect(state.history?.past).toHaveLength(2);
+    expect(state.history?.past[1]?.label).toBe("Remove frame");
+  });
+
+  it("wraps and unwraps in the component variant target", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    const card = findNode(page.root, childId);
+    if (card?.type !== "frame") throw new Error("Fixture card is not a frame");
+    card.children.push(
+      createFrame({ id: "node_a", name: "A" }),
+      createFrame({ id: "node_b", name: "B" }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card");
+    if (!created) throw new Error("Component was not created");
+
+    const variant = variantFrame(
+      store.getState().project!,
+      created.componentId,
+      created.variantId,
+    );
+    const nodeA = variant.children[0];
+    const nodeB = variant.children[1];
+    if (!nodeA || !nodeB) throw new Error("Variant children missing");
+
+    store.getState().selectMany([nodeA.id, nodeB.id]);
+    const frameId = store.getState().wrapSelection(
+      "frame",
+      { x: 0, y: 0, width: 300, height: 200 },
+      { [nodeA.id]: { x: 1, y: 2 }, [nodeB.id]: { x: 3, y: 4 } },
+    );
+    expect(frameId).not.toBeNull();
+
+    let root = variantFrame(store.getState().project!, created.componentId, created.variantId);
+    expect(root.children.map((node) => node.id)).toEqual([frameId]);
+    expect(findNode(root, nodeA.id)?.responsive.base.position).toMatchObject({ x: 1, y: 2 });
+
+    const moved = store.getState().unwrapSelection(frameId!);
+    expect(moved).toEqual([nodeA.id, nodeB.id]);
+    root = variantFrame(store.getState().project!, created.componentId, created.variantId);
+    expect(root.children.map((node) => node.id)).toEqual([nodeA.id, nodeB.id]);
+  });
+
+  it("leaves the document alone when the wrap target is the scene root", async () => {
+    const { project, rootId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(rootId);
+    const frameId = store.getState().wrapSelection(
+      "frame",
+      { x: 0, y: 0, width: 200, height: 120 },
+      {},
+    );
+    expect(frameId).toBeNull();
+    expect(store.getState().history?.past).toHaveLength(0);
+    expect(store.getState().selection).toEqual([rootId]);
+  });
 });

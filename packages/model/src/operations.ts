@@ -425,6 +425,235 @@ export function moveNode(
   newParent.children.splice(at, 0, node);
 }
 
+/* -------------------------------------------------------------- wrapping */
+
+export interface WrapBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Options for `wrapNodes`: the scene target plus the layers and frame shape. */
+export type WrapNodesOptions = SceneTarget & {
+  nodeIds: NodeId[];
+  kind: "frame" | "stack";
+  /** Measured union bounds in the shared parent's coordinate space. */
+  bounds?: WrapBounds;
+  /** Authoritative base positions, relative to the new frame. */
+  positions?: Record<NodeId, { x: number; y: number }>;
+  name?: string;
+};
+
+/** Options for `unwrapNode`: the scene target plus the frame to remove. */
+export type UnwrapNodeOptions = SceneTarget & {
+  nodeId: NodeId;
+  /** Authoritative base positions for the children, relative to the parent. */
+  childPositions?: Record<NodeId, { x: number; y: number }>;
+};
+
+function fixedLength(size: { mode: string; value?: number } | undefined): number {
+  if (!size || size.mode !== "fixed") return 0;
+  const value = size.value;
+  return value !== undefined && Number.isFinite(value) ? value : 0;
+}
+
+/** The union extent of the layers' base positions and fixed sizes. */
+function wrappedBounds(nodes: readonly SceneNode[]): WrapBounds {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const node of nodes) {
+    const base = node.responsive.base;
+    minX = Math.min(minX, base.position.x);
+    minY = Math.min(minY, base.position.y);
+    maxX = Math.max(maxX, base.position.x + fixedLength(base.size.width));
+    maxY = Math.max(maxY, base.position.y + fixedLength(base.size.height));
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    return { x: 0, y: 0, width: 400, height: 400 };
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  return {
+    x: minX,
+    y: minY,
+    width: width > 0 ? width : 400,
+    height: height > 0 ? height : 400,
+  };
+}
+
+/**
+ * Moves a layer into the new frame, rebasing its position on the frame origin.
+ * A supplied position is authoritative for the base; responsive overrides keep
+ * their visual place by subtracting the frame origin when they set x or y.
+ */
+function offsetIntoFrame(
+  node: SceneNode,
+  frame: { x: number; y: number },
+  positions?: Record<NodeId, { x: number; y: number }>,
+): void {
+  const base = node.responsive.base.position;
+  const supplied = positions?.[node.id];
+  node.responsive.base.position = {
+    ...base,
+    x: supplied ? supplied.x : base.x - frame.x,
+    y: supplied ? supplied.y : base.y - frame.y,
+  };
+
+  for (const override of Object.values(node.responsive.overrides)) {
+    const position = override.position;
+    if (!position) continue;
+    const patch: { x?: number; y?: number } = {};
+    if (position.x !== undefined) patch.x = position.x - frame.x;
+    if (position.y !== undefined) patch.y = position.y - frame.y;
+    if (patch.x !== undefined || patch.y !== undefined) {
+      override.position = { ...position, ...patch };
+    }
+  }
+}
+
+/**
+ * Wraps sibling layers in a new Frame or Stack.
+ *
+ * All layers must share one frame parent and none may be the scene root. The
+ * wrapper takes the lowest index among the selected layers, so the stacking
+ * order is preserved, and its children keep their parent order. One call is one
+ * history entry. Returns the new frame id.
+ */
+export function wrapNodes(draft: Draft<Project>, options: WrapNodesOptions): NodeId {
+  const root = getTargetRoot(draft, options);
+  const nodeIds = [...new Set(options.nodeIds)];
+  if (nodeIds.length === 0) {
+    throw new Error("Select at least one layer to wrap.");
+  }
+  if (nodeIds.includes(root.id)) {
+    throw new Error(`Cannot wrap the ${describeRootNode(options)} node "${root.id}".`);
+  }
+
+  const parents: Draft<FrameNode>[] = [];
+  for (const nodeId of nodeIds) {
+    const node = findNodeDraft(root, nodeId);
+    if (!node) {
+      throw new Error(`Node "${nodeId}" was not found in ${describeTarget(draft, options)}.`);
+    }
+    const parent = findParentDraft(root, nodeId);
+    if (!parent) {
+      throw new Error(`Cannot wrap node "${nodeId}": it has no parent.`);
+    }
+    parents.push(parent);
+  }
+
+  const parent = parents[0];
+  if (!parent) throw new Error("Select at least one layer to wrap.");
+  if (parents.some((candidate) => candidate.id !== parent.id)) {
+    throw new Error("All wrapped layers must share the same parent.");
+  }
+
+  const selected = new Set(nodeIds);
+  const ordered = parent.children.filter((child) => selected.has(child.id));
+  const lowestIndex = parent.children.findIndex((child) => selected.has(child.id));
+  if (lowestIndex === -1) {
+    throw new Error("Selected layers are not children of their parent.");
+  }
+
+  const bounds = options.bounds ?? wrappedBounds(toPlain(ordered));
+  const moved = ordered.map((node) => detachNode(node));
+  for (const node of moved) offsetIntoFrame(node, bounds, options.positions);
+
+  // Remove the selected layers before inserting the wrapper at their lowest
+  // index; no selected layer sits before that index, so it stays valid.
+  for (let index = parent.children.length - 1; index >= 0; index -= 1) {
+    const child = parent.children[index];
+    if (child && selected.has(child.id)) parent.children.splice(index, 1);
+  }
+
+  const frame = createFrame({
+    name: options.name ?? (options.kind === "stack" ? "Stack" : "Frame"),
+    props: {
+      position: { x: bounds.x, y: bounds.y },
+      size: {
+        width: { mode: "fixed", value: bounds.width },
+        height: { mode: "fixed", value: bounds.height },
+      },
+      style: { fill: null, overflow: "visible" },
+      layout:
+        options.kind === "stack"
+          ? { mode: "stack", direction: "vertical" }
+          : { mode: "none" },
+    },
+    children: moved,
+  });
+
+  parent.children.splice(lowestIndex, 0, castDraft(frame as SceneNode));
+  return frame.id;
+}
+
+/**
+ * Removes a frame and moves its children into its parent at the frame's index.
+ *
+ * Children keep their visual position by adding the frame origin to their base
+ * (or using a measured `childPositions` entry), and responsive position
+ * overrides shift by the same origin. Returns the moved child ids, which is
+ * empty for an empty frame.
+ */
+export function unwrapNode(draft: Draft<Project>, options: UnwrapNodeOptions): NodeId[] {
+  const root = getTargetRoot(draft, options);
+  const node = findNodeDraft(root, options.nodeId);
+  if (!node) {
+    throw new Error(`Node "${options.nodeId}" was not found in ${describeTarget(draft, options)}.`);
+  }
+  if (node.id === root.id) {
+    throw new Error(`Cannot remove the ${describeRootNode(options)} node "${options.nodeId}".`);
+  }
+  if (node.type !== "frame") {
+    throw new Error(
+      `Cannot remove node "${options.nodeId}": it is a ${node.type}, not a frame.`,
+    );
+  }
+
+  const parent = findParentDraft(root, options.nodeId);
+  if (!parent) {
+    throw new Error(`Cannot remove node "${options.nodeId}": it has no parent.`);
+  }
+  const index = parent.children.findIndex((child) => child.id === options.nodeId);
+  if (index === -1) {
+    throw new Error(`Node "${options.nodeId}" is not a child of its parent.`);
+  }
+
+  const frame = node.responsive.base.position;
+  const children = node.children.map((child) => detachNode(child));
+  const moved: NodeId[] = [];
+
+  for (const child of children) {
+    const base = child.responsive.base.position;
+    const supplied = options.childPositions?.[child.id];
+    child.responsive.base.position = {
+      ...base,
+      x: supplied ? supplied.x : base.x + frame.x,
+      y: supplied ? supplied.y : base.y + frame.y,
+    };
+
+    for (const override of Object.values(child.responsive.overrides)) {
+      const position = override.position;
+      if (!position) continue;
+      const patch: { x?: number; y?: number } = {};
+      if (position.x !== undefined) patch.x = position.x + frame.x;
+      if (position.y !== undefined) patch.y = position.y + frame.y;
+      if (patch.x !== undefined || patch.y !== undefined) {
+        override.position = { ...position, ...patch };
+      }
+    }
+    moved.push(child.id);
+  }
+
+  parent.children.splice(index, 1, ...castDraft(children));
+  return moved;
+}
+
 export function duplicateNode(draft: Draft<Project>, location: NodeLocation): NodeId {
   const root = getTargetRoot(draft, location);
   const node = findNodeDraft(root, location.nodeId);

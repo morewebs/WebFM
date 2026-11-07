@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 07:58
+**Updated:** 2026-11-07 08:06
 
 ## Current milestone
 
@@ -24,6 +24,8 @@ including component property controls. Interactions are the next slice.
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
+| Grouping | done | Group/ungroup, Add frame/Add stack, Remove wrapper; one history entry; verified. |
+| Fill editor | done | Solid, linear/radial gradients (stops/angle), image fills (asset select/upload, fit, focus); verified. |
 | Context menus | done | Framer-style node/layer and empty-canvas menus with search, submenus and working actions; verified. |
 | Alignment | done | 8 align/distribute actions for free-layout siblings; buttons + Alt shortcuts; verified. Text layers auto-rename on content edit. |
 | Interactions | done | Appear/Hover/Tap with fade/slide/scale, duration, delay and easing; Preview and publish CSS; verified. |
@@ -48,6 +50,10 @@ including component property controls. Interactions are the next slice.
   selects the instance; Add variant; instance variant switch changes rendered
   content; second instance inserted from Assets; publish renders both instances
   with their variant content.
+- Grouping: Shift+F wrapped two selected instances into one frame without moving
+  them; Ctrl+Delete unwrapped it and kept the screen positions.
+- Fill editor: switched a text layer to a linear gradient and saw the
+  background-image update; type/stops/angle controls rendered.
 - Context menus: right-clicked layer rows and canvas nodes; verified duplicate,
   copy/paste, rename, lock, overflow, move-to-front, align, add breakpoint,
   instance guards, empty-canvas menu and search filtering.
@@ -73,9 +79,8 @@ including component property controls. Interactions are the next slice.
 ## Next
 
 1. Code components, then CMS.
-2. Page background editing; instance style overrides; per-variant property defaults.
-3. Instance style overrides; per-variant property defaults; publish class
-   scoping for component variants.
+2. Positioning modes, overflow X/Y/scroll, min/max fields, viewport sizing.
+3. Fonts picker/text styles, shape tools, color styles; instance style overrides; per-variant property defaults; publish class scoping.
 4. More interaction triggers (scroll, drag) and effect types; multiple effects
    per trigger.
 5. Cloud/auth design discussion (deferred).
