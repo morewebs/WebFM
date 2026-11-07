@@ -587,6 +587,20 @@ export function Canvas() {
     };
   }, [addMenuOpen]);
 
+  // The context menu's "Custom…" item asks the canvas to open its breakpoint
+  // popover, which is the existing custom-breakpoint UI.
+  useEffect(() => {
+    const handleAddBreakpoint = (): void => {
+      setBreakpointMenuOpen(false);
+      setNewBreakpointName("Custom");
+      setNewBreakpointWidth("1000");
+      setAddBreakpointError(null);
+      setAddMenuOpen(true);
+    };
+    window.addEventListener("wfm:add-breakpoint", handleAddBreakpoint);
+    return () => window.removeEventListener("wfm:add-breakpoint", handleAddBreakpoint);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void document.fonts.ready.then(() => {
@@ -800,6 +814,42 @@ export function Canvas() {
     const nodeId = nodeElement?.dataset.nodeId;
     const node = nodeId ? findNode(scene.root, nodeId) : null;
     state.setHovered(node && node.id !== scene.root.id && !node.locked ? node.id : null);
+  };
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    const target = event.target as HTMLElement | null;
+    // Chrome around the page (the breakpoint bar, resize handles, an open menu)
+    // is not canvas background.
+    if (target?.closest(".wfm-breakpoint-bar, .wfm-selection__handle, .wfm-menu")) return;
+    setBreakpointMenuOpen(false);
+    setAddMenuOpen(false);
+
+    const state = useProjectStore.getState();
+    const currentScene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
+    if (!currentScene) return;
+
+    const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
+    const nodeId = nodeElement?.dataset.nodeId;
+    const node = nodeId ? findNode(currentScene.root, nodeId) : null;
+
+    if (node) {
+      // Right-clicking a node that is already part of a selection keeps that
+      // selection; only a new node is selected (or added with modifiers).
+      if (!state.selection.includes(node.id)) {
+        state.select(node.id, event.shiftKey || event.metaKey || event.ctrlKey);
+      }
+      useUIStore.getState().openContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        nodeId: node.id,
+      });
+      return;
+    }
+
+    // Outside the page root: the empty-canvas menu.
+    state.clearSelection();
+    useUIStore.getState().openContextMenu({ x: event.clientX, y: event.clientY });
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1179,6 +1229,7 @@ export function Canvas() {
       className={`wfm-canvas-viewport ${cursorClass}`}
       role="application"
       aria-label="Canvas"
+      onContextMenu={handleContextMenu}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

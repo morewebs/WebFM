@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-06 23:10
+**Updated:** 2026-11-07 07:58
 
 ## Current milestone
 
@@ -24,6 +24,7 @@ including component property controls. Interactions are the next slice.
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
+| Context menus | done | Framer-style node/layer and empty-canvas menus with search, submenus and working actions; verified. |
 | Alignment | done | 8 align/distribute actions for free-layout siblings; buttons + Alt shortcuts; verified. Text layers auto-rename on content edit. |
 | Interactions | done | Appear/Hover/Tap with fade/slide/scale, duration, delay and easing; Preview and publish CSS; verified. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
@@ -47,6 +48,9 @@ including component property controls. Interactions are the next slice.
   selects the instance; Add variant; instance variant switch changes rendered
   content; second instance inserted from Assets; publish renders both instances
   with their variant content.
+- Context menus: right-clicked layer rows and canvas nodes; verified duplicate,
+  copy/paste, rename, lock, overflow, move-to-front, align, add breakpoint,
+  instance guards, empty-canvas menu and search filtering.
 - Alignment: selected two instances, aligned left (both x=0) and center-h
   (x=450) with one undo entry each; Alt+A triggered the same alignment; a text
   content edit renamed the layer to "Auto renamed".
