@@ -4,15 +4,18 @@ import { createFrame, createImage, createProject, createText, resolveNodeProps }
 import { applyOperation, createHistory, redo, undo } from "./history";
 import {
   addBreakpoint,
+  addColorStyle,
   addGuide,
   addInteraction,
   addPage,
+  countColorStyleUsages,
   createComponentFromNode,
   duplicateNode,
   type InteractionInput,
   insertNode,
   moveNode,
   removeBreakpoint,
+  removeColorStyle,
   removeGuide,
   removeInteraction,
   removeNode,
@@ -24,6 +27,7 @@ import {
   setProjectPublish,
   unwrapNode,
   updateBoxProps,
+  updateColorStyle,
   updateGuide,
   updateImageProps,
   updateInteraction,
@@ -834,9 +838,7 @@ describe("guides", () => {
     );
     expect(moved.pages[0]!.guides?.[0]?.position).toBe(240);
 
-    const { project: removed } = run(moved, (draft) =>
-      removeGuide(draft, { pageId, guideId }),
-    );
+    const { project: removed } = run(moved, (draft) => removeGuide(draft, { pageId, guideId }));
     expect(removed.pages[0]!.guides).toEqual([]);
   });
 
@@ -845,13 +847,15 @@ describe("guides", () => {
     const { pageId } = ids(base);
     const badAxis = "z" as unknown as "x";
 
-    expect(() => run(base, (draft) => addGuide(draft, { pageId, axis: "x", position: 0 }))).not.toThrow();
+    expect(() =>
+      run(base, (draft) => addGuide(draft, { pageId, axis: "x", position: 0 })),
+    ).not.toThrow();
     expect(() =>
       run(base, (draft) => addGuide(draft, { pageId: "missing", axis: "x", position: 0 })),
     ).toThrow(/not found/);
-    expect(() => run(base, (draft) => addGuide(draft, { pageId, axis: badAxis, position: 0 }))).toThrow(
-      /axis/,
-    );
+    expect(() =>
+      run(base, (draft) => addGuide(draft, { pageId, axis: badAxis, position: 0 })),
+    ).toThrow(/axis/);
     expect(() =>
       run(base, (draft) => addGuide(draft, { pageId, axis: "x", position: Number.NaN })),
     ).toThrow(/finite/);
@@ -1398,9 +1402,7 @@ describe("wrapping", () => {
       run(seeded, (draft) => wrapNodes(draft, { pageId, nodeIds: [rootId], kind: "frame" })),
     ).toThrow(/page root/);
     expect(() =>
-      run(seeded, (draft) =>
-        wrapNodes(draft, { pageId, nodeIds: ["a", "nested"], kind: "frame" }),
-      ),
+      run(seeded, (draft) => wrapNodes(draft, { pageId, nodeIds: ["a", "nested"], kind: "frame" })),
     ).toThrow(/share the same parent/);
     expect(() =>
       run(seeded, (draft) => wrapNodes(draft, { pageId, nodeIds: ["missing"], kind: "frame" })),
@@ -1463,5 +1465,310 @@ describe("wrapping", () => {
       unwrapNode(draft, { pageId, nodeId: frameId });
     });
     expect(unwrapped.project.pages[0]!.root.children.map((node) => node.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("color styles", () => {
+  it("adds a trimmed, validated style and rejects duplicates and bad values", () => {
+    const base = createProject();
+    const { project, result: id } = run(base, (draft) =>
+      addColorStyle(draft, { name: "  Brand  ", color: "#112233", opacity: 0.5 }),
+    );
+
+    expect(project.colorStyles).toHaveLength(1);
+    expect(project.colorStyles[0]).toMatchObject({
+      id,
+      name: "Brand",
+      color: "#112233",
+      opacity: 0.5,
+    });
+
+    expect(() =>
+      run(base, (draft) => addColorStyle(draft, { name: "", color: "#fff", opacity: 1 })),
+    ).toThrow(/cannot be empty/);
+    expect(() =>
+      run(base, (draft) => addColorStyle(draft, { name: "X", color: "#fff", opacity: 2 })),
+    ).toThrow(/0 to 1/);
+    expect(() =>
+      run(project, (draft) => addColorStyle(draft, { name: "brand", color: "#fff", opacity: 1 })),
+    ).toThrow(/already exists/);
+  });
+
+  it("propagates color/opacity updates across pages and component variants", () => {
+    const fixture = componentFixture();
+    const componentRoot = fixture.project.components[0]!.variants[0]!.root;
+    const cardNodeId = componentRoot.id;
+    const labelNodeId = componentRoot.children.find((child) => child.type === "text")!.id;
+    const withStyle = run(fixture.project, (draft) =>
+      addColorStyle(draft, { name: "Brand", color: "#000000", opacity: 1 }),
+    ).project;
+    const styleId = withStyle.colorStyles[0]!.id;
+
+    const withSecondPage = run(withStyle, (draft) =>
+      addPage(draft, { name: "About", path: "/about" }),
+    ).project;
+    const secondPage = withSecondPage.pages[1]!;
+
+    const seeded = run(withSecondPage, (draft) => {
+      insertNode(draft, {
+        pageId: fixture.pageId,
+        parentId: fixture.rootId,
+        node: createFrame({
+          id: "page_frame",
+          props: {
+            style: { fill: { type: "solid", color: "#000000", opacity: 1, styleId } },
+          },
+        }),
+      });
+      insertNode(draft, {
+        pageId: fixture.pageId,
+        parentId: fixture.rootId,
+        node: createFrame({
+          id: "unlinked_frame",
+          props: {
+            style: { fill: { type: "solid", color: "#00ff00", opacity: 1 } },
+          },
+        }),
+      });
+      insertNode(draft, {
+        pageId: secondPage.id,
+        parentId: secondPage.root.id,
+        node: createFrame({
+          id: "second_frame",
+          props: {
+            style: { fill: { type: "solid", color: "#000000", opacity: 1, styleId } },
+          },
+        }),
+      });
+      updateBoxProps(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: cardNodeId,
+        breakpointId: "bp_desktop",
+        patch: { style: { fill: { type: "solid", color: "#000000", opacity: 1, styleId } } },
+      });
+      updateTextProps(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: labelNodeId,
+        breakpointId: "bp_desktop",
+        patch: { colorStyleId: styleId },
+      });
+      // A breakpoint-specific fill without its own styleId inherits the link
+      // from the base fill and must update too.
+      updateBoxProps(draft, {
+        pageId: fixture.pageId,
+        nodeId: "page_frame",
+        breakpointId: "bp_phone",
+        patch: { style: { fill: { type: "solid", color: "#000000", opacity: 1 } } },
+      });
+    }).project;
+
+    expect(countColorStyleUsages(seeded, styleId)).toBe(4);
+
+    const { project: updated } = run(seeded, (draft) =>
+      updateColorStyle(draft, styleId, { name: "Brand 2", color: "#ff0000", opacity: 0.25 }),
+    );
+
+    expect(updated.colorStyles[0]).toMatchObject({
+      name: "Brand 2",
+      color: "#ff0000",
+      opacity: 0.25,
+    });
+
+    const pageFill = getFrameNode(updated, "page_frame").responsive.base.style.fill;
+    if (pageFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(pageFill).toMatchObject({ color: "#ff0000", opacity: 0.25, styleId });
+
+    const secondFill = (findNode(updated.pages[1]!.root, "second_frame") as FrameNode).responsive
+      .base.style.fill;
+    if (secondFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(secondFill).toMatchObject({ color: "#ff0000", opacity: 0.25, styleId });
+
+    const cardFill = updated.components[0]!.variants[0]!.root.responsive.base.style.fill;
+    if (cardFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(cardFill.color).toBe("#ff0000");
+
+    const label = findNode(updated.components[0]!.variants[0]!.root, labelNodeId);
+    if (label?.type !== "text") throw new Error("Expected the component label");
+    expect(label.responsive.base.text.color).toBe("#ff0000");
+    expect(label.responsive.base.colorStyleId).toBe(styleId);
+
+    const phoneFill = getFrameNode(updated, "page_frame").responsive.overrides.bp_phone?.style
+      ?.fill;
+    if (phoneFill?.type !== "solid") throw new Error("Expected the override fill");
+    expect(phoneFill).toMatchObject({ color: "#ff0000", opacity: 0.25 });
+
+    // Unlinked fills are untouched.
+    const unlinked = getFrameNode(updated, "unlinked_frame").responsive.base.style.fill;
+    if (unlinked?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(unlinked).toMatchObject({ color: "#00ff00", opacity: 1 });
+    expect(unlinked.styleId).toBeUndefined();
+  });
+
+  it("removes a style and clears references while keeping the last color", () => {
+    const fixture = componentFixture();
+    const componentRoot = fixture.project.components[0]!.variants[0]!.root;
+    const cardNodeId = componentRoot.id;
+    const labelNodeId = componentRoot.children.find((child) => child.type === "text")!.id;
+    const seeded = run(fixture.project, (draft) => {
+      const styleId = addColorStyle(draft, { name: "Brand", color: "#336699", opacity: 0.8 });
+      updateBoxProps(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: cardNodeId,
+        breakpointId: "bp_desktop",
+        patch: { style: { fill: { type: "solid", color: "#336699", opacity: 0.8, styleId } } },
+      });
+      updateTextProps(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: labelNodeId,
+        breakpointId: "bp_desktop",
+        patch: { text: { color: "#336699" }, colorStyleId: styleId },
+      });
+      return styleId;
+    });
+    const styleId = seeded.result;
+
+    const { project: removed } = run(seeded.project, (draft) => removeColorStyle(draft, styleId));
+
+    expect(removed.colorStyles).toHaveLength(0);
+    const variantRoot = removed.components[0]!.variants[0]!.root;
+    const fill = variantRoot.responsive.base.style.fill;
+    if (fill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(fill).toMatchObject({ color: "#336699", opacity: 0.8 });
+    expect(fill.styleId).toBeNull();
+
+    const label = findNode(variantRoot, labelNodeId);
+    if (label?.type !== "text") throw new Error("Expected a text node");
+    expect(label.responsive.base.text.color).toBe("#336699");
+    expect(label.responsive.base.colorStyleId).toBeNull();
+  });
+
+  it("follows the breakpoint cascade when links are introduced or detached mid-chain", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+
+    const seeded = run(base, (draft) => {
+      const styleId = addColorStyle(draft, { name: "Brand", color: "#000000", opacity: 1 });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createFrame({
+          id: "cascade",
+          props: { style: { fill: { type: "solid", color: "#111111", opacity: 1 } } },
+        }),
+      });
+      // Tablet introduces the link, phone authored earlier stays unlinked.
+      updateBoxProps(draft, {
+        pageId,
+        nodeId: "cascade",
+        breakpointId: "bp_tablet",
+        patch: { style: { fill: { type: "solid", color: "#111111", opacity: 1, styleId } } },
+      });
+      updateBoxProps(draft, {
+        pageId,
+        nodeId: "cascade",
+        breakpointId: "bp_phone",
+        patch: { style: { fill: { type: "solid", color: "#222222", opacity: 1 } } },
+      });
+      return styleId;
+    });
+    const styleId = seeded.result;
+
+    const updated = run(seeded.project, (draft) =>
+      updateColorStyle(draft, styleId, { color: "#ff0000" }),
+    ).project;
+    const cascade = getFrameNode(updated, "cascade");
+    const tablet = cascade.responsive.overrides.bp_tablet?.style?.fill;
+    const phone = cascade.responsive.overrides.bp_phone?.style?.fill;
+    if (tablet?.type !== "solid" || phone?.type !== "solid") throw new Error("Expected fills");
+    expect(tablet).toMatchObject({ color: "#ff0000", styleId });
+    // The phone override inherits the tablet link through the cascade.
+    expect(phone).toMatchObject({ color: "#ff0000" });
+    const resolved = resolveNodeProps(cascade, "bp_phone", updated.breakpoints);
+    expect(resolved.style.fill).toMatchObject({ type: "solid", color: "#ff0000", styleId });
+
+    // A mid-chain detach must stop propagation into narrower breakpoints.
+    const detached = run(seeded.project, (draft) => {
+      updateBoxProps(draft, {
+        pageId,
+        nodeId: "cascade",
+        breakpointId: "bp_tablet",
+        patch: {
+          style: { fill: { type: "solid", color: "#111111", opacity: 1, styleId: null } },
+        },
+      });
+    }).project;
+    const recolored = run(detached, (draft) =>
+      updateColorStyle(draft, styleId, { color: "#0000ff" }),
+    ).project;
+    const detachedNode = getFrameNode(recolored, "cascade");
+    const detachedTablet = detachedNode.responsive.overrides.bp_tablet?.style?.fill;
+    const detachedPhone = detachedNode.responsive.overrides.bp_phone?.style?.fill;
+    if (detachedTablet?.type !== "solid" || detachedPhone?.type !== "solid") {
+      throw new Error("Expected fills");
+    }
+    expect(detachedTablet).toMatchObject({ color: "#111111", styleId: null });
+    expect(detachedPhone).toMatchObject({ color: "#222222" });
+    const detachedResolved = resolveNodeProps(detachedNode, "bp_phone", recolored.breakpoints);
+    expect(detachedResolved.style.fill).toMatchObject({ type: "solid", color: "#222222" });
+  });
+
+  it("propagates text colors through intermediate breakpoint links", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+
+    const seeded = run(base, (draft) => {
+      const styleId = addColorStyle(draft, { name: "Brand", color: "#000000", opacity: 1 });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "cascade_text", content: "Cascade" }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "cascade_text",
+        breakpointId: "bp_tablet",
+        patch: { colorStyleId: styleId },
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "cascade_text",
+        breakpointId: "bp_phone",
+        patch: { text: { color: "#222222" } },
+      });
+      return styleId;
+    });
+    const styleId = seeded.result;
+
+    const updated = run(seeded.project, (draft) =>
+      updateColorStyle(draft, styleId, { color: "#ff0000" }),
+    ).project;
+    const text = findNode(updated.pages[0]!.root, "cascade_text");
+    if (text?.type !== "text") throw new Error("Expected the text node");
+    expect(text.responsive.base.text.color).toBe("#000000");
+    expect(text.responsive.overrides.bp_tablet).toMatchObject({
+      colorStyleId: styleId,
+      text: { color: "#ff0000" },
+    });
+    expect(text.responsive.overrides.bp_phone).toMatchObject({
+      text: { color: "#ff0000" },
+    });
+    expect(text.responsive.overrides.bp_phone?.colorStyleId).toBeUndefined();
+    const resolved = resolveNodeProps(text, "bp_phone", updated.breakpoints);
+    expect(resolved.text.color).toBe("#ff0000");
+    expect(resolved.colorStyleId).toBe(styleId);
+  });
+
+  it("throws for an unknown color style id", () => {
+    const base = createProject();
+    expect(() =>
+      run(base, (draft) => updateColorStyle(draft, "missing", { color: "#fff" })),
+    ).toThrow(/was not found/);
+    expect(() => run(base, (draft) => removeColorStyle(draft, "missing"))).toThrow(/was not found/);
   });
 });

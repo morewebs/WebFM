@@ -10,14 +10,14 @@ outside this project's scope.
 
 - **Done:** editor shell, pages, Frame/Stack/Text/Image, canvas select/move/
   resize, text editing, layers, grouping/wrapping, core Style panel with
-  solid/gradient/image fills, positioning modes, overflow X/Y/scroll,
-  viewport sizing, min/max fields, rectangle/rounded/oval tools, Google Fonts
-  picker, rulers, guides and smart-guide snapping, responsive breakpoints,
-  components/instances/variants/property controls, Appear/Hover/Tap effects,
-  alignment, context menus, preview, static publish.
+  solid/gradient/image fills, color styles, positioning modes, overflow
+  X/Y/scroll, viewport sizing, min/max fields, rectangle/rounded/oval tools,
+  Google Fonts picker, rulers, guides and smart-guide snapping, responsive
+  breakpoints, components/instances/variants/property controls,
+  Appear/Hover/Tap effects, alignment, context menus, preview, static publish.
 - **Partial:** Pages, Layers, Assets, Style, Components, Interactions, menus,
   shortcuts, publishing.
-- **Missing (editor-level):** color/text styles, polygon/star/pen and vector
+- **Missing (editor-level):** text styles, polygon/star/pen and vector
   editing, grid overlay, marquee selection, visual effects, code components,
   CMS, localization, analytics, settings, code overrides, comments/
   collaboration, branching, Figma import, versioned publishing.
@@ -52,7 +52,8 @@ outside this project's scope.
 | Layers: alphabetical sort | Done | Empty-canvas context menu. |
 | Assets: image upload/list/insert | Done | |
 | Assets: components | Done | Cards with variant/instance counts and edit. |
-| Assets: colors, text styles, vectors, code overrides | Missing | |
+| Assets: colors | Done | Colors section: create (links the source layer), inline rename/recolor/opacity, delete, usage counts; click to apply to the selection. Saved styles also appear in the Fill and Typography editors with linked badges and Detach. Verified. |
+| Assets: text styles, vectors, code overrides | Missing | |
 | Assets: folders/templates | Missing | Framer asset panel is folder-based since 2026-10-26. |
 | Style panel | Partial | See Styling. |
 | Agent | Reserved | |
@@ -92,7 +93,7 @@ outside this project's scope.
 | Fill solid | Done | |
 | Fill gradient / image | Done | Fill type selector, gradient stops, image asset upload/select, fit and focal position. |
 | Color picker opacity/gradients/stops | Partial | Native color + hex for solid only. |
-| Color styles (saved swatches) | Missing | |
+| Color styles (saved swatches) | Done | Project color styles link solid fills and text colors. Style edits propagate to every usage across pages and component variants along the breakpoint cascade; manual color edits detach. Values stay denormalized so publish CSS needs no lookup. No-op apply/edit adds no history. Verified. |
 | Border width/color/style | Done | Per-side borders missing. |
 | Radius corners | Done | |
 | Shadow list | Done | Add/remove basic. |
@@ -159,7 +160,7 @@ outside this project's scope.
 3. ~~Positioning modes and overflow X/Y/Scroll, viewport sizing, min/max~~ — done and verified.
 4. ~~Google Fonts/custom font picker~~ — done; custom font upload and text styles remain.
 5. Shape tools: rectangle and rounded done; polygon/star still missing.
-6. Color styles and text styles in Assets.
+6. ~~Color styles in Assets~~ — done and verified; text styles remain.
 7. ~~Rulers/guides/smart guides and snapping~~ — done and verified.
 
 ## P1 gaps
