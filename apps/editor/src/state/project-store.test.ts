@@ -367,15 +367,21 @@ describe("project store", () => {
     const saved = store.getState().project;
     expect(saved).not.toBeNull();
     const root = saved!.pages[0]!.root as FrameNode;
+    // The selected Card is a container, so the paste lands inside it.
+    const card = findNode(root, childId) as FrameNode;
+    expect(card.children.map((child) => child.id)).toEqual(pasted);
     const clone = findNode(root, pasted[0]!);
     expect(clone?.type).toBe("frame");
     expect(clone?.name).toBe("Card");
     expect(store.getState().selection).toEqual(pasted);
 
+    // The pasted frame is selected, so the next paste goes inside it.
     const second = store.getState().pasteClipboard();
     expect(second[0]).not.toBe(pasted[0]);
     const latestRoot = store.getState().project!.pages[0]!.root as FrameNode;
-    expect(latestRoot.children).toHaveLength(3);
+    expect(latestRoot.children).toHaveLength(1);
+    const pastedFrame = findNode(latestRoot, pasted[0]!) as FrameNode;
+    expect(pastedFrame.children.map((child) => child.id)).toEqual(second);
   });
 
   it("writes box updates into the active breakpoint override", async () => {

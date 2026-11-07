@@ -886,13 +886,22 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       pasteClipboard() {
         const scene = currentScene();
         if (!scene || scene.root.type !== "frame" || !clipboardNodes) return [];
+        // Framer pastes into the selected container, or beside a selected
+        // layer; with nothing selected it lands on the scene root.
+        let parentId: NodeId = scene.root.id;
+        const state = get();
+        const selectedId = state.selection.length === 1 ? state.selection[0] : undefined;
+        const selected = selectedId ? findNode(scene.root, selectedId) : null;
+        if (selected && selected.id !== scene.root.id) {
+          parentId =
+            selected.type === "frame"
+              ? selected.id
+              : (findParent(scene.root, selected.id)?.id ?? scene.root.id);
+        }
         const clones = cloneNodesForPaste(clipboardNodes);
         applyRecipe("Paste", (draft) => {
           for (const node of clones) {
-            insertNodeOperation(
-              draft,
-              withTarget(scene.target, { parentId: scene.root.id, node }),
-            );
+            insertNodeOperation(draft, withTarget(scene.target, { parentId, node }));
           }
         });
         const ids = clones.map((node) => node.id);
