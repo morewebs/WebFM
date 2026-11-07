@@ -272,3 +272,159 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
+
+/* --------------------------------------------------------------- rulers */
+
+/* Fixed 20px rulers; ticks are positioned from the stage offset and zoom so
+   they track the page but the ruler itself never scales. */
+.wfm-ruler {
+  position: absolute;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  background: var(--wfm-bg);
+  color: var(--wfm-text-faint);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.wfm-ruler--top {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 20px;
+  border-bottom: 1px solid var(--wfm-border);
+  cursor: ew-resize;
+}
+
+.wfm-ruler--left {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  border-right: 1px solid var(--wfm-border);
+  cursor: ns-resize;
+}
+
+.wfm-ruler__tick {
+  position: absolute;
+  background: var(--wfm-border);
+}
+
+.wfm-ruler--top .wfm-ruler__tick {
+  top: 0;
+  width: 1px;
+  height: 5px;
+}
+
+.wfm-ruler--top .wfm-ruler__tick.is-major {
+  height: 9px;
+  background: var(--wfm-text-faint);
+}
+
+.wfm-ruler--left .wfm-ruler__tick {
+  left: 0;
+  height: 1px;
+  width: 5px;
+}
+
+.wfm-ruler--left .wfm-ruler__tick.is-major {
+  width: 9px;
+  background: var(--wfm-text-faint);
+}
+
+.wfm-ruler__label {
+  position: absolute;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.wfm-ruler--top .wfm-ruler__label {
+  left: 3px;
+  top: 9px;
+}
+
+.wfm-ruler--left .wfm-ruler__label {
+  left: 9px;
+  top: 2px;
+}
+
+.wfm-ruler-corner {
+  position: absolute;
+  z-index: 21;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  background: var(--wfm-bg);
+  border-right: 1px solid var(--wfm-border);
+  border-bottom: 1px solid var(--wfm-border);
+}
+
+/* --------------------------------------------------------------- guides */
+
+.wfm-guide {
+  position: absolute;
+  z-index: 6;
+  pointer-events: auto;
+}
+
+.wfm-guide::after {
+  content: "";
+  position: absolute;
+  background: var(--wfm-accent);
+}
+
+.wfm-guide--x {
+  cursor: ew-resize;
+}
+
+.wfm-guide--x::after {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.wfm-guide--y {
+  cursor: ns-resize;
+}
+
+.wfm-guide--y::after {
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.wfm-guide.is-preview {
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+.wfm-guide.is-outside::after {
+  background: var(--wfm-danger);
+}
+
+/* ----------------------------------------------------------- snap lines */
+
+.wfm-snap-line {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  background: #ff3b6b;
+}
+
+.wfm-snap-line--x {
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+
+.wfm-snap-line--y {
+  height: 1px;
+  transform: translateY(-0.5px);
+}

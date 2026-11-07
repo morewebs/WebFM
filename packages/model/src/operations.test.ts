@@ -4,6 +4,7 @@ import { createFrame, createImage, createProject, createText, resolveNodeProps }
 import { applyOperation, createHistory, redo, undo } from "./history";
 import {
   addBreakpoint,
+  addGuide,
   addInteraction,
   addPage,
   createComponentFromNode,
@@ -12,6 +13,7 @@ import {
   insertNode,
   moveNode,
   removeBreakpoint,
+  removeGuide,
   removeInteraction,
   removeNode,
   removePage,
@@ -20,13 +22,14 @@ import {
   setNodeLocked,
   setNodeVisible,
   setProjectPublish,
+  unwrapNode,
   updateBoxProps,
+  updateGuide,
   updateImageProps,
   updateInteraction,
   updateNode,
   updatePage,
   updateTextProps,
-  unwrapNode,
   wrapNodes,
 } from "./operations";
 import { collectNodes, findNode } from "./tree";
@@ -794,6 +797,99 @@ describe("pages", () => {
     const { project } = run(withTwo, (draft) => removePage(draft, withTwo.pages[1]!.id));
     expect(project.pages).toHaveLength(1);
     expect(project.pages[0]!.path).toBe("/");
+  });
+});
+
+describe("guides", () => {
+  it("adds x and y guides with generated ids and keeps them on the page", () => {
+    const base = createProject();
+    const { pageId } = ids(base);
+    const { project, result } = run(base, (draft) => {
+      const xId = addGuide(draft, { pageId, axis: "x", position: 120 });
+      addGuide(draft, { pageId, axis: "y", position: -40.5 });
+      return xId;
+    });
+
+    expect(result.startsWith("guide_")).toBe(true);
+    expect(project.pages[0]!.guides).toHaveLength(2);
+    expect(project.pages[0]!.guides?.[0]).toEqual({ id: result, axis: "x", position: 120 });
+    expect(project.pages[0]!.guides?.[1]).toMatchObject({ axis: "y", position: -40.5 });
+  });
+
+  it("creates an empty guide list on new pages", () => {
+    expect(createProject().pages[0]!.guides).toEqual([]);
+    const added = run(createProject(), (draft) => addPage(draft)).project.pages[1]!;
+    expect(added.guides).toEqual([]);
+  });
+
+  it("updates a guide position and removes it", () => {
+    const base = createProject();
+    const { pageId } = ids(base);
+    const { project: added, result: guideId } = run(base, (draft) =>
+      addGuide(draft, { pageId, axis: "x", position: 10 }),
+    );
+
+    const { project: moved } = run(added, (draft) =>
+      updateGuide(draft, { pageId, guideId, position: 240 }),
+    );
+    expect(moved.pages[0]!.guides?.[0]?.position).toBe(240);
+
+    const { project: removed } = run(moved, (draft) =>
+      removeGuide(draft, { pageId, guideId }),
+    );
+    expect(removed.pages[0]!.guides).toEqual([]);
+  });
+
+  it("validates the page, axis, position and guide id", () => {
+    const base = createProject();
+    const { pageId } = ids(base);
+    const badAxis = "z" as unknown as "x";
+
+    expect(() => run(base, (draft) => addGuide(draft, { pageId, axis: "x", position: 0 }))).not.toThrow();
+    expect(() =>
+      run(base, (draft) => addGuide(draft, { pageId: "missing", axis: "x", position: 0 })),
+    ).toThrow(/not found/);
+    expect(() => run(base, (draft) => addGuide(draft, { pageId, axis: badAxis, position: 0 }))).toThrow(
+      /axis/,
+    );
+    expect(() =>
+      run(base, (draft) => addGuide(draft, { pageId, axis: "x", position: Number.NaN })),
+    ).toThrow(/finite/);
+    expect(() =>
+      run(base, (draft) => updateGuide(draft, { pageId, guideId: "missing", position: 0 })),
+    ).toThrow(/not found/);
+    expect(() => run(base, (draft) => removeGuide(draft, { pageId, guideId: "missing" }))).toThrow(
+      /not found/,
+    );
+  });
+
+  it("persists guide changes through undo and redo", () => {
+    const base = createProject();
+    const { pageId } = ids(base);
+    let history = createHistory(base);
+    let guideId = "";
+
+    history = applyOperation(history, "Add guide", (draft) => {
+      guideId = addGuide(draft, { pageId, axis: "x", position: 300 });
+    });
+    expect(history.project.pages[0]!.guides?.[0]?.position).toBe(300);
+
+    history = applyOperation(history, "Update guide", (draft) => {
+      updateGuide(draft, { pageId, guideId, position: 500 });
+    });
+    expect(history.project.pages[0]!.guides?.[0]?.position).toBe(500);
+
+    const undone = undo(history);
+    expect(undone.project.pages[0]!.guides?.[0]?.position).toBe(300);
+
+    const redone = redo(undone);
+    expect(redone.project.pages[0]!.guides?.[0]?.position).toBe(500);
+
+    const removed = applyOperation(redone, "Remove guide", (draft) => {
+      removeGuide(draft, { pageId, guideId });
+    });
+    expect(removed.project.pages[0]!.guides).toEqual([]);
+    expect(undo(removed).project.pages[0]!.guides?.[0]?.position).toBe(500);
   });
 });
 

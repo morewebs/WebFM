@@ -848,4 +848,64 @@ describe("project store", () => {
     expect(store.getState().history?.past).toHaveLength(0);
     expect(store.getState().selection).toEqual([rootId]);
   });
+
+  it("adds, updates and removes page guides with one history entry each", async () => {
+    const { project } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const guideId = store.getState().addGuide("x", 120);
+    expect(guideId).toMatch(/^guide_/);
+    let state = store.getState();
+    expect(state.project?.pages[0]?.guides).toEqual([
+      { id: guideId, axis: "x", position: 120 },
+    ]);
+    expect(state.history?.past).toHaveLength(1);
+    expect(state.history?.past[0]?.label).toBe("Add guide");
+    expect(state.selection).toEqual([]);
+
+    store.getState().updateGuide(guideId!, 240);
+    state = store.getState();
+    expect(state.project?.pages[0]?.guides?.[0]?.position).toBe(240);
+    expect(state.history?.past).toHaveLength(2);
+    expect(state.history?.past[1]?.label).toBe("Update guide");
+
+    store.getState().undo();
+    expect(store.getState().project?.pages[0]?.guides?.[0]?.position).toBe(120);
+    store.getState().redo();
+    expect(store.getState().project?.pages[0]?.guides?.[0]?.position).toBe(240);
+
+    store.getState().removeGuide(guideId!);
+    state = store.getState();
+    expect(state.project?.pages[0]?.guides).toEqual([]);
+    expect(state.history?.past).toHaveLength(3);
+    expect(state.history?.past[2]?.label).toBe("Remove guide");
+  });
+
+  it("targets the active page for guides while editing a component", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card");
+    if (!created) throw new Error("Component was not created");
+    store.getState().enterComponent(created.componentId, created.variantId, created.instanceId);
+    expect(store.getState().editingComponent).not.toBeNull();
+
+    const guideId = store.getState().addGuide("y", 42);
+    expect(guideId).not.toBeNull();
+    expect(store.getState().project?.pages[0]?.guides?.[0]).toMatchObject({
+      id: guideId,
+      axis: "y",
+      position: 42,
+    });
+
+    store.getState().updateGuide(guideId!, 84);
+    expect(store.getState().project?.pages[0]?.guides?.[0]?.position).toBe(84);
+    store.getState().removeGuide(guideId!);
+    expect(store.getState().project?.pages[0]?.guides).toEqual([]);
+  });
 });

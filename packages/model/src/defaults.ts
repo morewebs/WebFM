@@ -385,6 +385,7 @@ export function createPage(options: CreatePageOptions = {}): Page {
     path: options.path ?? "/",
     background: options.background === undefined ? defaultFill() : options.background,
     root,
+    guides: [],
   };
 }
 

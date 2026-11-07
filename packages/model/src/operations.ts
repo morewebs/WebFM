@@ -32,6 +32,7 @@ import type {
   DeepPartial,
   Fill,
   FrameNode,
+  Guide,
   ImageProps,
   Interaction,
   InteractionDirection,
@@ -1356,6 +1357,64 @@ export function removePage(draft: Draft<Project>, pageId: PageId): void {
   if (index === -1) throw new Error(`Page "${pageId}" was not found.`);
   if (draft.pages.length === 1) throw new Error("Cannot remove the last page.");
   draft.pages.splice(index, 1);
+}
+
+/* ------------------------------------------------------------------ guides */
+
+function assertGuideAxis(axis: Guide["axis"]): void {
+  if (axis !== "x" && axis !== "y") {
+    throw new Error(`Guide axis must be "x" or "y", received "${String(axis)}".`);
+  }
+}
+
+function assertGuidePosition(position: number): void {
+  if (!Number.isFinite(position)) {
+    throw new Error(`Guide position must be a finite number, received ${String(position)}.`);
+  }
+}
+
+/**
+ * Adds a page guide and returns its id. Positions are page coordinates;
+ * `axis: "x"` is a vertical line, `axis: "y"` a horizontal one.
+ */
+export function addGuide(
+  draft: Draft<Project>,
+  { pageId, axis, position }: { pageId: PageId; axis: Guide["axis"]; position: number },
+): string {
+  const page = getPageOrThrow(draft, pageId);
+  assertGuideAxis(axis);
+  assertGuidePosition(position);
+  const guide: Guide = { id: createId("guide"), axis, position };
+  if (!page.guides) page.guides = [];
+  page.guides.push(guide);
+  return guide.id;
+}
+
+/** Moves an existing page guide to a new page-coordinate position. */
+export function updateGuide(
+  draft: Draft<Project>,
+  { pageId, guideId, position }: { pageId: PageId; guideId: string; position: number },
+): void {
+  const page = getPageOrThrow(draft, pageId);
+  assertGuidePosition(position);
+  const guide = page.guides?.find((candidate) => candidate.id === guideId);
+  if (!guide) {
+    throw new Error(`Guide "${guideId}" was not found on page "${pageId}".`);
+  }
+  guide.position = position;
+}
+
+/** Removes a page guide. */
+export function removeGuide(
+  draft: Draft<Project>,
+  { pageId, guideId }: { pageId: PageId; guideId: string },
+): void {
+  const page = getPageOrThrow(draft, pageId);
+  const index = page.guides?.findIndex((candidate) => candidate.id === guideId) ?? -1;
+  if (index === -1) {
+    throw new Error(`Guide "${guideId}" was not found on page "${pageId}".`);
+  }
+  page.guides?.splice(index, 1);
 }
 
 export function renameProject(draft: Draft<Project>, name: string): void {

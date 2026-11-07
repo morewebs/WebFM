@@ -18,6 +18,7 @@ import {
   type Fill,
   findNode,
   findParent,
+  type Guide,
   isSelfOrDescendant,
   type NodeId,
   resolveNodeProps,
@@ -40,6 +41,15 @@ import { activeBreakpointOf, activeSceneOf, useProjectStore } from "../../state/
 import { Icon } from "../icons";
 import { type EditorTool, useUIStore } from "../ui-store";
 import { ComponentBar } from "./ComponentBar";
+import {
+  addRectTargets,
+  computeSnap,
+  computeSnapForEdges,
+  type SnapEdge,
+  type SnapLine,
+  type SnapRect,
+  type SnapTarget,
+} from "./snapping";
 import "./Canvas.css";
 
 /* --------------------------------------------------------------- geometry */
@@ -54,6 +64,11 @@ export const NUDGE_STEP = 1;
 export const NUDGE_STEP_LARGE = 10;
 export const DRAW_THRESHOLD = 3;
 export const DRAG_THRESHOLD = 2;
+export const RULER_SIZE = 20;
+export const RULER_MAJOR_STEP = 100;
+export const RULER_MINOR_STEP = 10;
+export const SNAP_THRESHOLD_SCREEN = 4;
+export const GUIDE_GRAB_SIZE = 7;
 
 export interface CanvasPoint {
   x: number;
@@ -249,6 +264,25 @@ function measureNodeRect(
   };
 }
 
+/**
+ * Measures every rendered node into viewport-relative rects. Used both by the
+ * layout effect (for overlays) and synchronously at pointer-down, where a
+ * stale cached measurement would make snapping drift.
+ */
+function measureStageRects(
+  stage: HTMLElement,
+  viewport: HTMLDivElement,
+): Map<NodeId, CanvasRect> {
+  const viewportRect = viewport.getBoundingClientRect();
+  const next = new Map<NodeId, CanvasRect>();
+  for (const element of stage.querySelectorAll<HTMLElement>("[data-node-id]")) {
+    const nodeId = element.dataset.nodeId;
+    if (!nodeId) continue;
+    next.set(nodeId, measureNodeRect(stage, viewportRect, element));
+  }
+  return next;
+}
+
 function findNodeElement(stage: HTMLElement, nodeId: NodeId): HTMLElement | null {
   const elements = stage.querySelectorAll<HTMLElement>("[data-node-id]");
   for (const element of elements) {
@@ -256,6 +290,118 @@ function findNodeElement(stage: HTMLElement, nodeId: NodeId): HTMLElement | null
   }
   return null;
 }
+
+/* ------------------------------------------------------------------ rulers */
+
+export interface RulerMark {
+  /** Viewport position in pixels. */
+  position: number;
+  /** Page coordinate rounded to a whole pixel. */
+  value: number;
+  major: boolean;
+}
+
+/** Tick marks every 10 page px, labelled every 100, positioned at the zoom. */
+export function rulerMarks(offset: number, extent: number, zoom: number): RulerMark[] {
+  if (!Number.isFinite(offset) || !Number.isFinite(extent) || !Number.isFinite(zoom) || zoom <= 0) {
+    return [];
+  }
+  const first = Math.floor(-offset / zoom / RULER_MINOR_STEP) * RULER_MINOR_STEP;
+  const last = (extent - offset) / zoom;
+  const marks: RulerMark[] = [];
+  for (let page = first; page <= last && marks.length < 5000; page += RULER_MINOR_STEP) {
+    marks.push({
+      position: offset + page * zoom,
+      value: Math.round(page),
+      major: page % RULER_MAJOR_STEP === 0,
+    });
+  }
+  return marks;
+}
+
+/* ---------------------------------------------------------------- snapping */
+
+/** Converts a measured viewport rect into page coordinates. */
+function toPageRect(rect: CanvasRect, stageOffset: CanvasPoint, zoom: number): SnapRect {
+  return {
+    x: (rect.left - stageOffset.x) / zoom,
+    y: (rect.top - stageOffset.y) / zoom,
+    width: rect.width / zoom,
+    height: rect.height / zoom,
+  };
+}
+
+function measuredPageRect(
+  rects: Map<NodeId, CanvasRect>,
+  nodeId: NodeId,
+  stageOffset: CanvasPoint,
+  zoom: number,
+): SnapRect | null {
+  const rect = rects.get(nodeId);
+  return rect ? toPageRect(rect, stageOffset, zoom) : null;
+}
+
+interface SnapContext {
+  root: SceneNode;
+  selection: NodeId[];
+  rects: Map<NodeId, CanvasRect>;
+  page: { guides?: Guide[] } | null;
+  stageOffset: CanvasPoint;
+  zoom: number;
+  pageWidth: number;
+  pageHeight: number;
+  guidesVisible: boolean;
+}
+
+/**
+ * Targets for a moving/resizing node: parent, siblings, the page/root and the
+ * visible page guides. Everything is converted to page coordinates so the
+ * snapping math sees one coordinate space.
+ */
+function gatherSnapTargets(
+  context: SnapContext,
+  movingId: NodeId,
+): SnapTarget[] {
+  const { root, selection, rects, stageOffset, zoom } = context;
+  const targets: SnapTarget[] = [];
+  const excluded = new Set(selection);
+
+  const parent = findParent(root, movingId);
+  const parentRect = parent ? measuredPageRect(rects, parent.id, stageOffset, zoom) : null;
+  if (parent) {
+    if (parentRect) addRectTargets(targets, parentRect, "parent");
+    if (parent.type === "frame") {
+      for (const sibling of parent.children) {
+        if (sibling.id === movingId || excluded.has(sibling.id) || !sibling.visible) continue;
+        const rect = measuredPageRect(rects, sibling.id, stageOffset, zoom);
+        if (rect) addRectTargets(targets, rect, "sibling");
+      }
+    }
+  }
+
+  // Page/root edges and centers. The root itself never snaps (it cannot move),
+  // but its bounds are a useful target for its children.
+  if (movingId !== root.id) {
+    const rootRect =
+      measuredPageRect(rects, root.id, stageOffset, zoom) ?? {
+        x: 0,
+        y: 0,
+        width: context.pageWidth,
+        height: context.pageHeight,
+      };
+    addRectTargets(targets, rootRect, "page");
+  }
+
+  if (context.guidesVisible) {
+    for (const guide of context.page?.guides ?? []) {
+      if (!Number.isFinite(guide.position)) continue;
+      targets.push({ axis: guide.axis, position: guide.position, source: "guide" });
+    }
+  }
+
+  return targets;
+}
+
 
 /** Top-left of a frame's padding box in page coordinates. */
 function pageOriginOf(element: HTMLElement, stage: HTMLElement, zoom: number): CanvasPoint {
@@ -435,6 +581,9 @@ interface MoveSession {
   breakpointId: string;
   startClient: CanvasPoint;
   startPositions: Map<NodeId, CanvasPoint>;
+  /** Page-space rect and targets for the node under the pointer. */
+  snapRect: SnapRect | null;
+  snapTargets: SnapTarget[];
   dragKey: string;
   moved: boolean;
 }
@@ -448,6 +597,8 @@ interface ResizeSession {
   handle: ResizeHandle;
   startClient: CanvasPoint;
   startRect: CanvasRect;
+  snapRect: SnapRect | null;
+  snapTargets: SnapTarget[];
   movable: boolean;
   dragKey: string;
   moved: boolean;
@@ -469,7 +620,23 @@ interface DrawSession {
   currentClient: CanvasPoint;
 }
 
-type Session = MoveSession | ResizeSession | PanSession | DrawSession;
+/** Dragging a new guide out of a ruler, or an existing guide on the page. */
+interface GuideSession {
+  kind: "guide";
+  pointerId: number;
+  axis: Guide["axis"];
+  mode: "create" | "update";
+  guideId?: string;
+}
+
+type Session = MoveSession | ResizeSession | PanSession | DrawSession | GuideSession;
+
+interface GuidePreview {
+  axis: Guide["axis"];
+  position: number;
+  /** True while the pointer is outside the page; releasing removes/cancels. */
+  outside: boolean;
+}
 
 interface EditingState {
   nodeId: NodeId;
@@ -492,8 +659,13 @@ export function Canvas() {
   const addBreakpoint = useProjectStore((state) => state.addBreakpoint);
   const removeBreakpoint = useProjectStore((state) => state.removeBreakpoint);
   const updateText = useProjectStore((state) => state.updateText);
+  const addGuide = useProjectStore((state) => state.addGuide);
+  const updateGuide = useProjectStore((state) => state.updateGuide);
+  const removeGuide = useProjectStore((state) => state.removeGuide);
 
   const tool = useUIStore((state) => state.tool);
+  const rulersVisible = useUIStore((state) => state.rulersVisible);
+  const guidesVisible = useUIStore((state) => state.guidesVisible);
 
   const scene = activeSceneOf(project, activePageId, editingComponent);
   const page = scene?.kind === "page" ? scene.page : null;
@@ -511,8 +683,11 @@ export function Canvas() {
   const editorClosedRef = useRef(false);
 
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const [rects, setRects] = useState<Map<NodeId, CanvasRect>>(() => new Map());
   const [drawRect, setDrawRect] = useState<CanvasRect | null>(null);
+  const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
+  const [guidePreview, setGuidePreview] = useState<GuidePreview | null>(null);
   const [breakpointMenuOpen, setBreakpointMenuOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [newBreakpointName, setNewBreakpointName] = useState("Custom");
@@ -527,14 +702,7 @@ export function Canvas() {
     const stage = stageRef.current;
     const viewport = viewportRef.current;
     if (!stage || !viewport) return;
-    const viewportRect = viewport.getBoundingClientRect();
-    const next = new Map<NodeId, CanvasRect>();
-    const elements = stage.querySelectorAll<HTMLElement>("[data-node-id]");
-    for (const element of elements) {
-      const nodeId = element.dataset.nodeId;
-      if (!nodeId) continue;
-      next.set(nodeId, measureNodeRect(stage, viewportRect, element));
-    }
+    const next = measureStageRects(stage, viewport);
     rectsRef.current = next;
     setRects(next);
   }, []);
@@ -544,7 +712,9 @@ export function Canvas() {
     if (!viewport) return;
     const update = (): void => {
       const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
       setViewportWidth((current) => (current === width ? current : width));
+      setViewportHeight((current) => (current === height ? current : height));
     };
     update();
     const observer = new ResizeObserver(update);
@@ -822,6 +992,58 @@ export function Canvas() {
 
   /* --------------------------------------------------------------- pointer */
 
+  // The page height in page pixels, used by rulers, guides and snap lines.
+  const rootHeightValue = scene
+    ? resolveNodeProps(scene.root, activeBreakpointId, project?.breakpoints ?? []).size.height
+    : null;
+  const fallbackPageHeight =
+    rootHeightValue?.mode === "fixed" && typeof rootHeightValue.value === "number"
+      ? rootHeightValue.value
+      : 1000;
+  const measuredRoot = scene ? rects.get(scene.root.id) : undefined;
+  const pageHeight =
+    measuredRoot && measuredRoot.height > 0 ? measuredRoot.height / zoom : fallbackPageHeight;
+  // Guides belong to the active page, even while a component is being edited.
+  const guidePage = project?.pages.find((candidate) => candidate.id === activePageId) ?? null;
+
+  /** Page-space rect and snap targets for a node at pointer-down time. */
+  const snapContextFor = (
+    state: ReturnType<typeof useProjectStore.getState>,
+    currentScene: NonNullable<ReturnType<typeof activeSceneOf>>,
+    nodeId: NodeId,
+    stage: HTMLElement,
+    viewport: HTMLDivElement,
+  ): { snapRect: SnapRect | null; snapTargets: SnapTarget[] } | null => {
+    const stageOffset = centeredStageOffset(
+      viewport.clientWidth,
+      pageWidth,
+      state.zoom,
+      state.pan,
+    );
+    // Measure now rather than trusting the last rAF: a resize or a layout
+    // change since then would make every snap target off by the difference.
+    const rects = measureStageRects(stage, viewport);
+    const snapRect = measuredPageRect(rects, nodeId, stageOffset, state.zoom);
+    if (!snapRect) return null;
+    const node = findNode(currentScene.root, nodeId);
+    if (!node) return null;
+    const snapTargets = gatherSnapTargets(
+      {
+        root: currentScene.root,
+        selection: state.selection,
+        rects,
+        page: currentScene.kind === "page" ? guidePage : null,
+        stageOffset,
+        zoom: state.zoom,
+        pageWidth,
+        pageHeight,
+        guidesVisible,
+      },
+      nodeId,
+    );
+    return { snapRect, snapTargets };
+  };
+
   const startPan = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const state = useProjectStore.getState();
     event.preventDefault();
@@ -832,6 +1054,112 @@ export function Canvas() {
       startPan: { x: state.pan.x, y: state.pan.y },
     };
     viewportRef.current?.setPointerCapture(event.pointerId);
+  };
+
+  /* --------------------------------------------------------------- guides */
+
+  const isGuideOutside = (axis: Guide["axis"], position: number): boolean => {
+    const limit = axis === "x" ? pageWidth : pageHeight;
+    return position < 0 || position > limit;
+  };
+
+  const pagePointFromEvent = (event: ReactPointerEvent<HTMLDivElement>): CanvasPoint | null => {
+    const viewport = viewportRef.current;
+    if (!viewport) return null;
+    const state = useProjectStore.getState();
+    const stageOffset = centeredStageOffset(
+      viewport.clientWidth,
+      pageWidth,
+      state.zoom,
+      state.pan,
+    );
+    const rect = viewport.getBoundingClientRect();
+    return viewportPointToPage(
+      { x: event.clientX - rect.left, y: event.clientY - rect.top },
+      stageOffset,
+      state.zoom,
+    );
+  };
+
+  const guidePositionFromEvent = (
+    axis: Guide["axis"],
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): number | null => {
+    const point = pagePointFromEvent(event);
+    return point ? (axis === "x" ? point.x : point.y) : null;
+  };
+
+  const startGuideCreate = (
+    axis: Guide["axis"],
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const viewport = viewportRef.current;
+    const position = guidePositionFromEvent(axis, event);
+    if (!viewport || position === null) return;
+    sessionRef.current = { kind: "guide", pointerId: event.pointerId, axis, mode: "create" };
+    setGuidePreview({ axis, position, outside: isGuideOutside(axis, position) });
+    viewport.setPointerCapture(event.pointerId);
+  };
+
+  const startGuideMove = (
+    guide: Guide,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    sessionRef.current = {
+      kind: "guide",
+      pointerId: event.pointerId,
+      axis: guide.axis,
+      mode: "update",
+      guideId: guide.id,
+    };
+    setGuidePreview({
+      axis: guide.axis,
+      position: guide.position,
+      outside: isGuideOutside(guide.axis, guide.position),
+    });
+    viewport.setPointerCapture(event.pointerId);
+  };
+
+  const finishGuide = (
+    session: GuideSession,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    const position = guidePositionFromEvent(session.axis, event);
+    setGuidePreview(null);
+    if (position === null) return;
+
+    if (isGuideOutside(session.axis, position)) {
+      // Releasing outside the page removes a guide; a new one is cancelled.
+      if (session.mode === "update" && session.guideId) removeGuide(session.guideId);
+      return;
+    }
+
+    const rounded = Math.round(position);
+    if (session.mode === "update" && session.guideId) {
+      updateGuide(session.guideId, rounded);
+    } else {
+      addGuide(session.axis, rounded);
+    }
+  };
+
+  /** Applies a pointer position to the live guide preview. */
+  const updateGuideDrag = (
+    session: GuideSession,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void => {
+    const position = guidePositionFromEvent(session.axis, event);
+    if (position === null) return;
+    setGuidePreview({
+      axis: session.axis,
+      position,
+      outside: isGuideOutside(session.axis, position),
+    });
   };
 
   const updateHover = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -889,6 +1217,8 @@ export function Canvas() {
 
     setBreakpointMenuOpen(false);
     setAddMenuOpen(false);
+    setSnapLines([]);
+    setGuidePreview(null);
 
     const state = useProjectStore.getState();
     state.setHovered(null);
@@ -919,6 +1249,13 @@ export function Canvas() {
         ? resolveNodeProps(parent, state.activeBreakpointId, currentProject.breakpoints).layout
             .mode === "none"
         : false;
+      const snap = snapContextFor(
+        useProjectStore.getState(),
+        currentScene,
+        nodeId,
+        stage,
+        viewport,
+      );
 
       sessionRef.current = {
         kind: "resize",
@@ -934,6 +1271,8 @@ export function Canvas() {
           width: elementRect.width / state.zoom,
           height: elementRect.height / state.zoom,
         },
+        snapRect: snap?.snapRect ?? null,
+        snapTargets: snap?.snapTargets ?? [],
         movable,
         dragKey: createDragKey("resize"),
         moved: false,
@@ -1003,6 +1342,8 @@ export function Canvas() {
       startPositions.set(id, { x: props.position.x, y: props.position.y });
     }
 
+    const snap = snapContextFor(useProjectStore.getState(), currentScene, nodeId, stage, viewport);
+
     sessionRef.current = {
       kind: "move",
       pointerId: event.pointerId,
@@ -1010,6 +1351,8 @@ export function Canvas() {
       breakpointId: state.activeBreakpointId,
       startClient: { x: event.clientX, y: event.clientY },
       startPositions,
+      snapRect: snap?.snapRect ?? null,
+      snapTargets: snap?.snapTargets ?? [],
       dragKey: createDragKey("move"),
       moved: false,
     };
@@ -1031,6 +1374,11 @@ export function Canvas() {
         x: session.startPan.x + (event.clientX - session.startClient.x),
         y: session.startPan.y + (event.clientY - session.startClient.y),
       });
+      return;
+    }
+
+    if (session.kind === "guide") {
+      updateGuideDrag(session, event);
       return;
     }
 
@@ -1059,7 +1407,31 @@ export function Canvas() {
     if (session.kind === "move") {
       if (!session.moved && distance < DRAG_THRESHOLD) return;
       session.moved = true;
-      const delta = constrainDelta(clientDx / state.zoom, clientDy / state.zoom, event.shiftKey);
+      let delta = constrainDelta(clientDx / state.zoom, clientDy / state.zoom, event.shiftKey);
+      let lines: SnapLine[] = [];
+      // Alt disables snapping, matching Framer's "hold Alt to bypass".
+      if (!event.altKey && session.snapRect) {
+        const candidate: SnapRect = {
+          x: session.snapRect.x + delta.x,
+          y: session.snapRect.y + delta.y,
+          width: session.snapRect.width,
+          height: session.snapRect.height,
+        };
+        const snapOptions: { x?: boolean; y?: boolean } = {};
+        if (event.shiftKey) {
+          if (delta.y === 0 && clientDy !== 0) snapOptions.y = false;
+          if (delta.x === 0 && clientDx !== 0) snapOptions.x = false;
+        }
+        const snap = computeSnap(
+          candidate,
+          session.snapTargets,
+          SNAP_THRESHOLD_SCREEN / state.zoom,
+          snapOptions,
+        );
+        delta = { x: delta.x + snap.dx, y: delta.y + snap.dy };
+        lines = snap.lines;
+      }
+      setSnapLines(lines);
       state.applyRecipe(
         "Move",
         (draft) => {
@@ -1091,16 +1463,60 @@ export function Canvas() {
       clientDy / state.zoom,
       event.shiftKey,
     );
+    let adjusted = next;
+    let lines: SnapLine[] = [];
+    // Shift keeps the aspect ratio, so snapping is skipped for that gesture.
+    if (!event.altKey && !event.shiftKey && session.snapRect) {
+      const movedLeft = next.left - session.startRect.left;
+      const movedTop = next.top - session.startRect.top;
+      const candidate: SnapRect = {
+        x: session.snapRect.x + movedLeft,
+        y: session.snapRect.y + movedTop,
+        width: next.width,
+        height: next.height,
+      };
+      const xEdges: SnapEdge[] = session.handle.includes("e")
+        ? ["end"]
+        : session.handle.includes("w") && session.movable
+          ? ["start"]
+          : [];
+      const yEdges: SnapEdge[] = session.handle.includes("s")
+        ? ["end"]
+        : session.handle.includes("n") && session.movable
+          ? ["start"]
+          : [];
+      const snap = computeSnapForEdges(
+        candidate,
+        session.snapTargets,
+        SNAP_THRESHOLD_SCREEN / state.zoom,
+        { x: xEdges, y: yEdges },
+      );
+      adjusted = { ...next };
+      if (session.handle.includes("e")) adjusted.width += snap.dx;
+      else if (session.handle.includes("w")) {
+        adjusted.left += snap.dx;
+        adjusted.width -= snap.dx;
+      }
+      if (session.handle.includes("s")) adjusted.height += snap.dy;
+      else if (session.handle.includes("n")) {
+        adjusted.top += snap.dy;
+        adjusted.height -= snap.dy;
+      }
+      adjusted.width = Math.max(1, adjusted.width);
+      adjusted.height = Math.max(1, adjusted.height);
+      lines = snap.lines;
+    }
+    setSnapLines(lines);
     const patch: DeepPartial<BoxProps> = {
       size: {
-        width: { mode: "fixed", value: Math.max(1, Math.round(next.width)) },
-        height: { mode: "fixed", value: Math.max(1, Math.round(next.height)) },
+        width: { mode: "fixed", value: Math.max(1, Math.round(adjusted.width)) },
+        height: { mode: "fixed", value: Math.max(1, Math.round(adjusted.height)) },
       },
     };
     if (session.movable) {
       patch.position = {
-        x: Math.round(next.left),
-        y: Math.round(next.top),
+        x: Math.round(adjusted.left),
+        y: Math.round(adjusted.top),
       };
     }
     state.applyRecipe(
@@ -1165,11 +1581,13 @@ export function Canvas() {
     if (!session || session.pointerId !== event.pointerId) return;
     sessionRef.current = null;
     setDrawRect(null);
+    setSnapLines([]);
     const viewport = viewportRef.current;
     if (viewport?.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
     }
     if (session.kind === "draw") finishDraw(session, event);
+    else if (session.kind === "guide") finishGuide(session, event);
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1177,6 +1595,8 @@ export function Canvas() {
     if (!session || session.pointerId !== event.pointerId) return;
     sessionRef.current = null;
     setDrawRect(null);
+    setSnapLines([]);
+    setGuidePreview(null);
     const viewport = viewportRef.current;
     if (viewport?.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
@@ -1227,6 +1647,25 @@ export function Canvas() {
   if (!project || !scene || !breakpoint) return null;
 
   const stageOffset = centeredStageOffset(viewportWidth, pageWidth, zoom, pan);
+  const topMarks = rulersVisible ? rulerMarks(stageOffset.x, viewportWidth, zoom) : [];
+  const leftMarks = rulersVisible ? rulerMarks(stageOffset.y, viewportHeight, zoom) : [];
+  const pageGuides =
+    guidesVisible && scene.kind === "page" ? (guidePage?.guides ?? []) : [];
+  const guideWidth = GUIDE_GRAB_SIZE;
+  const guideStyle = (axis: Guide["axis"], position: number): CSSProperties =>
+    axis === "x"
+      ? {
+          left: stageOffset.x + position * zoom - guideWidth / 2,
+          top: stageOffset.y,
+          width: guideWidth,
+          height: pageHeight * zoom,
+        }
+      : {
+          left: stageOffset.x,
+          top: stageOffset.y + position * zoom - guideWidth / 2,
+          width: pageWidth * zoom,
+          height: guideWidth,
+        };
   const singleSelectedId = selection.length === 1 ? selection[0] : undefined;
   const singleSelectedNode = singleSelectedId ? findNode(scene.root, singleSelectedId) : null;
   const showHandles =
@@ -1481,6 +1920,45 @@ export function Canvas() {
           );
         })}
 
+        {pageGuides.map((guide) => (
+          <div
+            key={guide.id}
+            className={`wfm-guide wfm-guide--${guide.axis}`}
+            style={guideStyle(guide.axis, guide.position)}
+            title="Drag to move, drag off the page to remove"
+            onPointerDown={(event) => startGuideMove(guide, event)}
+          />
+        ))}
+
+        {guidePreview ? (
+          <div
+            className={`wfm-guide wfm-guide--${guidePreview.axis}${
+              guidePreview.outside ? " is-outside" : " is-preview"
+            }`}
+            style={guideStyle(guidePreview.axis, guidePreview.position)}
+          />
+        ) : null}
+
+        {snapLines.map((line) => (
+          <div
+            key={`${line.axis}:${line.position}`}
+            className={`wfm-snap-line wfm-snap-line--${line.axis}`}
+            style={
+              line.axis === "x"
+                ? {
+                    left: stageOffset.x + line.position * zoom,
+                    top: stageOffset.y,
+                    height: pageHeight * zoom,
+                  }
+                : {
+                    top: stageOffset.y + line.position * zoom,
+                    left: stageOffset.x,
+                    width: pageWidth * zoom,
+                  }
+            }
+          />
+        ))}
+
         {drawRect ? (
           <div
             className="wfm-canvas-draw"
@@ -1493,6 +1971,42 @@ export function Canvas() {
           />
         ) : null}
       </div>
+
+      {rulersVisible ? (
+        <>
+          <div
+            className="wfm-ruler wfm-ruler--top"
+            title="Drag to add a vertical guide"
+            onPointerDown={(event) => startGuideCreate("x", event)}
+          >
+            {topMarks.map((mark) => (
+              <div
+                key={`${mark.value}:${mark.position}`}
+                className={`wfm-ruler__tick${mark.major ? " is-major" : ""}`}
+                style={{ left: mark.position }}
+              >
+                {mark.major ? <span className="wfm-ruler__label">{mark.value}</span> : null}
+              </div>
+            ))}
+          </div>
+          <div
+            className="wfm-ruler wfm-ruler--left"
+            title="Drag to add a horizontal guide"
+            onPointerDown={(event) => startGuideCreate("y", event)}
+          >
+            {leftMarks.map((mark) => (
+              <div
+                key={`${mark.value}:${mark.position}`}
+                className={`wfm-ruler__tick${mark.major ? " is-major" : ""}`}
+                style={{ top: mark.position }}
+              >
+                {mark.major ? <span className="wfm-ruler__label">{mark.value}</span> : null}
+              </div>
+            ))}
+          </div>
+          <div className="wfm-ruler-corner" />
+        </>
+      ) : null}
 
       {editing && editedRect && editedText ? (
         <textarea

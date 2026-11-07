@@ -25,8 +25,11 @@ move, 8-handle resize, text editing, layers tree (rename, hide, lock, drag),
 grouping/wrapping/unwrapping, rectangle/rounded/oval shape tools,
 Style panel (breakpoint position/size, layout, typography, solid/gradient/image
 fills, border/radius/shadow/opacity, overflow X/Y/scroll), positioning
-modes, viewport sizing and min/max fields, align/distribute for free-layout siblings (buttons
-and Alt shortcuts), text-layer auto-rename, Framer's custom context menus
+modes, viewport sizing and min/max fields, Google Fonts picker with live
+loading and publish links, rulers/guides and smart-guide snapping (drag from a
+ruler, Alt+G to hide guides, Alt to bypass snapping), align/distribute for
+free-layout siblings (buttons and Alt shortcuts), text-layer auto-rename,
+Framer's custom context menus
 (node/layer and empty canvas), responsive breakpoints with cascading overrides,
 undo/redo, preview, assets, publish and persistence.
 
@@ -62,8 +65,8 @@ that were exercised and the bugs found while verifying them.
   styles can collide; per-instance class scoping is a follow-up.
 - Nested component creation from the UI is disabled (the model create path is
   page-only).
-- Alignment buttons are visible but disabled; add/remove breakpoints and text
-  auto-rename are the next core polish.
+- Text/color styles, polygon/star/pen, the grid overlay and marquee selection
+  are the next editor gaps.
 - Cloud deployment and auth are deliberately deferred; the storage and auth
   seams are documented.
 

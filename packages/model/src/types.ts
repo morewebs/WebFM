@@ -43,6 +43,17 @@ export interface Breakpoint {
   width: number;
 }
 
+/**
+ * A horizontal or vertical editor guide. Positions are page coordinates:
+ * `axis: "x"` is a vertical line at `position`, `axis: "y"` a horizontal line.
+ * Guides are editor metadata only; the renderer and publish ignore them.
+ */
+export interface Guide {
+  id: string;
+  axis: "x" | "y";
+  position: number;
+}
+
 export interface Page {
   id: PageId;
   name: string;
@@ -50,6 +61,8 @@ export interface Page {
   path: string;
   background: Fill | null;
   root: FrameNode;
+  /** Optional so projects authored before guides existed keep loading. */
+  guides?: Guide[];
 }
 
 export interface PublishConfig {

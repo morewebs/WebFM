@@ -53,6 +53,10 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
   const setLeftTab = useUIStore((state) => state.setLeftTab);
   const setProjectMenuOpen = useUIStore((state) => state.setProjectMenuOpen);
   const setPublishOpen = useUIStore((state) => state.setPublishOpen);
+  const rulersVisible = useUIStore((state) => state.rulersVisible);
+  const guidesVisible = useUIStore((state) => state.guidesVisible);
+  const toggleRulers = useUIStore((state) => state.toggleRulers);
+  const toggleGuides = useUIStore((state) => state.toggleGuides);
   const setZoom = useProjectStore((state) => state.setZoom);
   const setPan = useProjectStore((state) => state.setPan);
 
@@ -318,6 +322,20 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
               label: "Show assets",
               shortcut: "Alt+Shift+3",
               action: () => setLeftTab("assets"),
+            },
+            {
+              id: "show-rulers",
+              label: "Show rulers",
+              shortcut: "Ctrl+R",
+              active: rulersVisible,
+              action: toggleRulers,
+            },
+            {
+              id: "show-guides",
+              label: "Show guides",
+              shortcut: "Alt+G",
+              active: guidesVisible,
+              action: toggleGuides,
             },
             {
               id: "zoom-100",
@@ -703,11 +721,12 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
       <button
         key={entry.id}
         type="button"
-        className="wfm-menu__item"
+        className={`wfm-menu__item${entry.active ? " is-active" : ""}`}
         disabled={disabled}
         title={disabled ? entry.reason : undefined}
         onClick={disabled ? undefined : () => runEntry(entry)}
       >
+        {entry.active ? <Icon name="check" size={14} className="wfm-mainmenu__icon" /> : null}
         <span className="wfm-menu__label">{entry.label}</span>
         {entry.shortcut ? <span className="wfm-menu__shortcut">{entry.shortcut}</span> : null}
       </button>
