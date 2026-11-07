@@ -172,6 +172,11 @@ export interface ProjectStoreState {
   updateText(nodeId: NodeId, patch: DeepPartial<TextProps>): void;
   updateImage(nodeId: NodeId, patch: DeepPartial<ImageProps>): void;
   insertNode(node: SceneNode, options?: InsertNodeOptions): NodeId | null;
+  /**
+   * Removes one node. The inline text editor uses it to discard a text layer
+   * that was left empty, matching Framer (empty text layers never persist).
+   */
+  removeNodeById(nodeId: NodeId): void;
   deleteSelection(): void;
   duplicateSelection(): NodeId[];
   wrapSelection(
@@ -955,6 +960,18 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         });
         set({ selection: [node.id] });
         return node.id;
+      },
+
+      removeNodeById(nodeId) {
+        const scene = currentScene();
+        if (!scene) return;
+        const node = findNode(scene.root, nodeId);
+        if (!node || node.id === scene.root.id) return;
+        const parent = findParent(scene.root, nodeId);
+        applyRecipe("Remove node", (draft) => {
+          removeNode(draft, withTarget(scene.target, { nodeId }));
+        });
+        set({ selection: parent ? [parent.id] : [], hoveredNodeId: null });
       },
 
       deleteSelection,

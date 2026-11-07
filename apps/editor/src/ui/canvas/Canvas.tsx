@@ -250,6 +250,23 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
+/**
+ * Character offset in a layer's plain text nearest a viewport point. Framer
+ * places the caret where a text layer is double-clicked instead of selecting
+ * everything, so the editor starts from this offset.
+ */
+function caretOffsetAtPoint(element: HTMLElement, x: number, y: number): number | undefined {
+  const doc = element.ownerDocument as Document & {
+    caretRangeFromPoint?: (pointX: number, pointY: number) => Range | null;
+  };
+  const range = doc.caretRangeFromPoint?.(x, y);
+  if (!range || !element.contains(range.startContainer)) return undefined;
+  const preceding = doc.createRange();
+  preceding.selectNodeContents(element);
+  preceding.setEnd(range.startContainer, range.startOffset);
+  return preceding.toString().length;
+}
+
 /** The DOM rect of a node in viewport coordinates. */
 function measureNodeRect(
   _stage: HTMLElement,
@@ -536,7 +553,10 @@ function createNodeForTool(
         props: { position, size: fixedSize ?? DEFAULT_IMAGE_SIZE },
       });
     case "text":
+      // Framer's Text tool starts an empty layer with a caret; it never drops
+      // placeholder text into the document.
       return createText({
+        content: "",
         props: { position, ...(fixedSize ? { size: fixedSize } : {}) },
       });
     default:
@@ -546,12 +566,23 @@ function createNodeForTool(
   }
 }
 
-function textEditorStyle(rect: CanvasRect, text: TextContent, zoom: number): CSSProperties {
+function textEditorStyle(
+  rect: CanvasRect,
+  text: TextContent,
+  zoom: number,
+  hugWidth: boolean,
+): CSSProperties {
   return {
     left: rect.left,
     top: rect.top,
-    width: Math.max(1, rect.width),
-    height: Math.max(1, rect.height),
+    // Framer's editor grows with the text it contains. A Fit Content layer
+    // therefore gets an auto-sized textarea; a fixed-width layer keeps its
+    // width and wraps.
+    ...(hugWidth
+      ? { width: "auto", minWidth: 1 }
+      : { width: Math.max(1, rect.width) }),
+    height: "auto",
+    minHeight: Math.max(1, rect.height),
     fontFamily: text.fontFamily,
     fontSize: text.fontSize * zoom,
     fontWeight: text.fontWeight,
@@ -643,6 +674,8 @@ interface EditingState {
   nodeId: NodeId;
   value: string;
   original: string;
+  /** Caret offset when entering from a double-click; undefined selects all. */
+  caret?: number;
 }
 
 /* ---------------------------------------------------------------- component */
@@ -963,7 +996,12 @@ export function Canvas() {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.focus();
-    textarea.select();
+    if (editing?.caret !== undefined) {
+      const caret = Math.min(editing.caret, textarea.value.length);
+      textarea.setSelectionRange(caret, caret);
+    } else {
+      textarea.select();
+    }
     editorFocusedRef.current = true;
   }, [editingNodeId, editedRectForFocus]);
 
@@ -971,8 +1009,14 @@ export function Canvas() {
     if (editorClosedRef.current) return;
     editorClosedRef.current = true;
     const current = editing;
-    if (current && commit && current.value !== current.original) {
-      updateText(current.nodeId, { text: { content: current.value } });
+    if (current && commit) {
+      if (current.value.trim() === "") {
+        // Framer never keeps an empty text layer: leaving the editor with no
+        // content removes it, whether it was just created or emptied.
+        useProjectStore.getState().removeNodeById(current.nodeId);
+      } else if (current.value !== current.original) {
+        updateText(current.nodeId, { text: { content: current.value } });
+      }
     }
     setEditing(null);
   };
@@ -1595,9 +1639,9 @@ export function Canvas() {
     );
     const insertedId = state.insertNode(node, { parentId });
     useUIStore.getState().setTool("select");
-    // Framer drops a freshly created text layer straight into editing with its
-    // content selected, so typing replaces the placeholder immediately.
-    if (session.tool === "text" && insertedId) beginTextEditing(insertedId);
+    // Framer drops a freshly created text layer straight into editing: an
+    // empty box with a caret at the start, ready for the first keystroke.
+    if (session.tool === "text" && insertedId) beginTextEditing(insertedId, 0);
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1632,7 +1676,7 @@ export function Canvas() {
   };
 
   /** Opens the inline text editor for a text layer, measuring it first. */
-  const beginTextEditing = (nodeId: NodeId): void => {
+  const beginTextEditing = (nodeId: NodeId, caret?: number): void => {
     const state = useProjectStore.getState();
     const currentProject = state.project;
     const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
@@ -1655,6 +1699,7 @@ export function Canvas() {
       nodeId,
       value: props.text.content,
       original: props.text.content,
+      ...(caret !== undefined ? { caret } : {}),
     });
   };
 
@@ -1676,7 +1721,7 @@ export function Canvas() {
     }
     if (node.type !== "text") return;
     event.preventDefault();
-    beginTextEditing(nodeId);
+    beginTextEditing(nodeId, caretOffsetAtPoint(nodeElement, event.clientX, event.clientY));
   };
 
   /* ----------------------------------------------------------------- render */
@@ -1720,10 +1765,12 @@ export function Canvas() {
       : null;
 
   const editedNode = editing ? findNode(scene.root, editing.nodeId) : null;
-  const editedText =
+  const editedProps =
     editedNode?.type === "text"
-      ? resolveNodeProps(editedNode, activeBreakpointId, project.breakpoints).text
+      ? resolveNodeProps(editedNode, activeBreakpointId, project.breakpoints)
       : null;
+  const editedText = editedProps?.text ?? null;
+  const editedSize = editedProps?.size ?? null;
   const editedRect = editing ? (rects.get(editing.nodeId) ?? null) : null;
 
   const cursorClass =
@@ -1898,13 +1945,18 @@ export function Canvas() {
           <PageView
             project={project}
             page={page}
-            options={{ breakpointId: activeBreakpointId, mode: "editor" }}
+            options={{
+              breakpointId: activeBreakpointId,
+              mode: "editor",
+              editingNodeId: editing?.nodeId,
+            }}
           />
         ) : (
           <div className="wfm-canvas-component-page">
             {renderNode(scene.root, project, {
               breakpointId: activeBreakpointId,
               mode: "editor",
+              editingNodeId: editing?.nodeId,
               assetUrl: (asset: Asset) => asset.url,
             })}
           </div>
@@ -2049,7 +2101,12 @@ export function Canvas() {
         <textarea
           ref={textareaRef}
           className="wfm-text-editor"
-          style={textEditorStyle(editedRect, editedText, zoom)}
+          style={textEditorStyle(
+            editedRect,
+            editedText,
+            zoom,
+            editedSize?.width.mode === "hug",
+          )}
           value={editing.value}
           aria-label="Edit text"
           spellCheck={false}
@@ -2062,13 +2119,7 @@ export function Canvas() {
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
-              editorClosedRef.current = true;
-              setEditing(null);
-              return;
-            }
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              event.currentTarget.blur();
+              closeEditor(true);
             }
           }}
         />

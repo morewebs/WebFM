@@ -271,6 +271,8 @@
   caret-color: var(--wfm-accent);
   white-space: pre-wrap;
   overflow-wrap: break-word;
+  /* Framer's text box grows with what you type. */
+  field-sizing: content;
 }
 
 /* --------------------------------------------------------------- rulers */

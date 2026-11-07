@@ -102,6 +102,17 @@ function renderFrame(
   );
 }
 
+/** Hard line breaks stay visible in both editor and publish markup. */
+function renderTextContent(content: string): ReactNode {
+  if (!content.includes("\n")) return content;
+  return content.split("\n").map((line, index) => (
+    <Fragment key={index}>
+      {index > 0 ? <br /> : null}
+      {line}
+    </Fragment>
+  ));
+}
+
 function renderText(
   node: TextNode,
   props: TextNode["responsive"]["base"],
@@ -110,11 +121,19 @@ function renderText(
   resolveAssetUrl: AssetUrlResolver,
 ): ReactElement {
   const editor = options.mode === "editor";
+  const editing = editor && options.editingNodeId === node.id;
   return (
     <div
       className={nodeClassName(node.id)}
       style={
-        editor ? resolveTextContainerStyles(props, props.text, context, resolveAssetUrl) : undefined
+        editor
+          ? {
+              ...resolveTextContainerStyles(props, props.text, context, resolveAssetUrl),
+              // The inline editor draws the live text; the layer beneath it
+              // stays in the layout but must not show a stale copy.
+              ...(editing ? { visibility: "hidden" as const } : {}),
+            }
+          : undefined
       }
       {...nodeDataAttributes(node, options.mode)}
       {...scrollDataAttributes(node)}
@@ -123,7 +142,7 @@ function renderText(
         className={textClassName(node.id)}
         style={editor ? resolveTextStyles(props.text) : undefined}
       >
-        {props.text.content}
+        {renderTextContent(props.text.content)}
       </div>
     </div>
   );

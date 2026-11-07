@@ -8,6 +8,11 @@ export interface RenderOptions {
   mode: RenderMode;
   /** Maps an asset record to a URL usable in the current environment. */
   assetUrl?: (asset: Asset) => string;
+  /**
+   * Editor only: the text layer currently open in the inline editor. The
+   * renderer hides it so the editor overlay is the only visible copy.
+   */
+  editingNodeId?: string;
 }
 
 export interface PageViewProps {

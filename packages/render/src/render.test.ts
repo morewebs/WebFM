@@ -89,6 +89,27 @@ describe("PageView markup", () => {
     expect(html).not.toContain("<html");
   });
 
+  it("keeps hard line breaks in editor and publish markup", () => {
+    const headline = createText({ id: "node_lines", name: "Lines", content: "First\nSecond" });
+    const { project, page } = projectWith([headline]);
+
+    for (const options of [EDITOR, PUBLISH]) {
+      const html = renderPageToHtml(project, page, options);
+      expect(html).toMatch(/First<br\s*\/?>Second/);
+    }
+  });
+
+  it("hides the text layer that is open in the inline editor", () => {
+    const headline = createText({ id: "node_hello", name: "Headline", content: "Hello WebFM" });
+    const { project, page } = projectWith([headline]);
+
+    const editing = renderPageToHtml(project, page, { ...EDITOR, editingNodeId: "node_hello" });
+    expect(editing).toContain("visibility:hidden");
+
+    const publish = renderPageToHtml(project, page, { ...PUBLISH, editingNodeId: "node_hello" });
+    expect(publish).not.toContain("visibility:hidden");
+  });
+
   it("emits classes and no editor attributes in publish mode", () => {
     const headline = createText({ id: "node_hello", name: "Headline", content: "Hello WebFM" });
     const { project, page } = projectWith([headline]);

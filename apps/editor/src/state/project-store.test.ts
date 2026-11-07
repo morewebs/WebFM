@@ -332,6 +332,23 @@ describe("project store", () => {
     expect(textNode(store.getState().project, blankId).name).toBe("Text");
   });
 
+  it("removes a node by id and selects its parent", async () => {
+    const { project, rootId } = fixture();
+    const page = project.pages[0];
+    if (!page) throw new Error("Fixture project has no page");
+    page.root.children.push(createText({ id: "node_blank", content: "" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().removeNodeById("node_blank");
+
+    const saved = store.getState().project;
+    expect(saved).not.toBeNull();
+    expect(findNode(saved!.pages[0]!.root, "node_blank")).toBeNull();
+    expect(store.getState().selection).toEqual([rootId]);
+  });
+
   it("writes box updates into the active breakpoint override", async () => {
     const { project, childId } = fixture();
     const { api } = makeApi(project);
