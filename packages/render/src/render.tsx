@@ -11,6 +11,7 @@ import { resolveNodeProps } from "@webfm/model";
 import { type CSSProperties, Fragment, type ReactElement, type ReactNode } from "react";
 import { createAssetUrlResolver } from "./assets";
 import { resolveComponentInstance, resolveInstanceBox } from "./components";
+import { firstInteraction } from "./interactions";
 import {
   type AssetUrlResolver,
   imageClassName,
@@ -40,6 +41,16 @@ function nodeDataAttributes(node: SceneNode, mode: RenderMode): Record<string, s
     "data-node-name": node.name,
     "data-node-locked": node.locked ? "true" : "false",
   };
+}
+
+/**
+ * The active scroll effect, in both editor and publish markup. The editor does
+ * not hide or animate the layer; the attribute is the hook the published
+ * runtime and the Preview observer use.
+ */
+function scrollDataAttributes(node: SceneNode): Record<string, string> {
+  const scroll = firstInteraction(node.interactions, "scroll");
+  return scroll ? { "data-wfm-scroll": scroll.id } : {};
 }
 
 function resolveImageSource(image: ImageContent, resolveAssetUrl: AssetUrlResolver): string | null {
@@ -73,6 +84,7 @@ function renderFrame(
       className={nodeClassName(node.id)}
       style={editor ? resolveBoxStyles(props, context, resolveAssetUrl) : undefined}
       {...nodeDataAttributes(node, options.mode)}
+      {...scrollDataAttributes(node)}
     >
       {node.children.map((child) => (
         <Fragment key={child.id}>
@@ -105,6 +117,7 @@ function renderText(
         editor ? resolveTextContainerStyles(props, props.text, context, resolveAssetUrl) : undefined
       }
       {...nodeDataAttributes(node, options.mode)}
+      {...scrollDataAttributes(node)}
     >
       <div
         className={textClassName(node.id)}
@@ -130,6 +143,7 @@ function renderImage(
       className={nodeClassName(node.id)}
       style={editor ? resolveBoxStyles(props, context, resolveAssetUrl) : undefined}
       {...nodeDataAttributes(node, options.mode)}
+      {...scrollDataAttributes(node)}
     >
       {src ? (
         <img
@@ -174,11 +188,15 @@ function renderComponentInstance(
       padding: "8px",
       overflow: "hidden",
     };
+    const scroll =
+      firstInteraction(node.interactions, "scroll") ??
+      (resolved ? firstInteraction(resolved.root.interactions, "scroll") : undefined);
     return (
       <div
         className={nodeClassName(node.id)}
         style={placeholder}
         {...nodeDataAttributes(node, options.mode)}
+        {...(scroll ? { "data-wfm-scroll": scroll.id } : {})}
       >
         {node.name}
       </div>
@@ -188,11 +206,16 @@ function renderComponentInstance(
   const mergedProps = resolveInstanceBox(project, node, options.breakpointId, resolved.root);
   if (!mergedProps) return null;
 
+  const scroll =
+    firstInteraction(node.interactions, "scroll") ??
+    firstInteraction(resolved.root.interactions, "scroll");
+
   return (
     <div
       className={nodeClassName(node.id)}
       style={editor ? resolveBoxStyles(mergedProps, context, resolveAssetUrl) : undefined}
       {...nodeDataAttributes(node, options.mode)}
+      {...(scroll ? { "data-wfm-scroll": scroll.id } : {})}
     >
       {resolved.root.children.map((child) => (
         <Fragment key={child.id}>

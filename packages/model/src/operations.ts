@@ -810,7 +810,12 @@ export function setNodeLocked(
 
 /* -------------------------------------------------------------- interactions */
 
-const INTERACTION_TRIGGERS: readonly InteractionTrigger[] = ["appear", "hover", "tap"];
+const INTERACTION_TRIGGERS: readonly InteractionTrigger[] = [
+  "appear",
+  "scroll",
+  "hover",
+  "tap",
+];
 const INTERACTION_EFFECTS: readonly InteractionEffect[] = ["fade", "slide", "scale"];
 const INTERACTION_DIRECTIONS: readonly InteractionDirection[] = ["up", "down", "left", "right"];
 const INTERACTION_EASINGS: readonly InteractionEasing[] = ["ease", "linear", "ease-in", "ease-out"];

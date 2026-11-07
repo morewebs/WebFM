@@ -86,6 +86,19 @@ Chrome.
 easing in the Effects section; CSS keyframes/transitions in Preview and publish.
 Verified in Chrome, including the published CSS.
 
+**Scroll effects** — the Effects + menu now has the Framer **Scroll** trigger
+with the same Fade/Slide/Scale, direction, duration, delay and easing controls.
+Layers reveal once when they enter the viewport. Published CSS hides scroll
+layers only under a `.wfm-js` root class, so a no-JS visitor sees the final
+content; when needed the static export emits a dependency-free
+`webfm-scroll.js` (IntersectionObserver, route-depth-relative `defer` tag) and
+Preview mirrors the behavior with a React effect. Verified in Chrome and in a
+served published page. An adversarial review then fixed hover/tap being pinned
+by the reveal animation, print-hidden scroll layers, variant-root effects on
+instances, Preview reveal loss on autosave/breakpoint changes, and added a
+runtime-load fallback. Trigger-once only — no parallax/speed/sticky/scroll-
+linked transforms.
+
 ## Verified in Chrome
 
 The list is maintained in [`STATE.md`](STATE.md), including the exact flows

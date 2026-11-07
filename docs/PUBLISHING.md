@@ -44,6 +44,16 @@ the static exporter has no network dependency.
 - Emits `index.html` for `/` and `<route>/index.html` for other page paths.
 - Copies referenced assets under `assets/` with stable filenames.
 - Produces a self-contained output: no runtime fetch, no framework required.
+- Emits `webfm-scroll.js` only when the project has at least one scroll effect.
+  It is a dependency-free IntersectionObserver reveal runtime: it adds
+  `.wfm-js` to the document root so the stylesheet may hide scroll layers, then
+  reveals each `[data-wfm-scroll]` layer once it enters the viewport. Without
+  JavaScript (or without IntersectionObserver) the final content is shown.
+- Links the runtime with `<script defer src="...">` before `</body>`, using a
+  route-depth-relative path (`webfm-scroll.js`, `../webfm-scroll.js`, ...).
+  A tiny inline head script adds `.wfm-js` before paint and removes it after 3s
+  if the deferred runtime never loaded, so blocked JavaScript cannot leave
+  scroll layers hidden. Print media always shows the resolved final states.
 - Returns a zip of the file map for download.
 
 Output shape:
@@ -53,6 +63,7 @@ index.html
 about/index.html
 assets/<hash>-<name>.<ext>
 styles.css
+webfm-scroll.js   # only when the project has scroll effects
 ```
 
 ## Adding an adapter

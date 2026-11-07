@@ -10,6 +10,7 @@ import { resolveNodeProps } from "@webfm/model";
 import type { CSSProperties } from "react";
 import { createAssetUrlResolver } from "./assets";
 import { resolveComponentInstance, resolveInstanceBox } from "./components";
+import { firstInteraction } from "./interactions";
 import {
   type AssetUrlResolver,
   imageClassName,
@@ -88,21 +89,22 @@ function childContext(props: BoxProps): StyleContext {
 
 /* --------------------------------------------------------------- interactions */
 
-/** First interaction for a trigger; Framer plays one effect per trigger. */
-function firstInteraction(
-  interactions: Interaction[],
-  trigger: Interaction["trigger"],
-): Interaction | undefined {
-  return interactions.find((interaction) => interaction.trigger === trigger);
-}
-
-/** CSS-safe keyframes name for an interaction's appear animation. */
-function appearAnimationName(interactionId: string, breakpointId?: string): string {
+/** CSS-safe keyframes name for an interaction animation. */
+function animationName(
+  interactionId: string,
+  kind: "appear" | "scroll",
+  breakpointId?: string,
+): string {
   const safe = interactionId.trim().replace(/[^a-zA-Z0-9_-]+/g, "-");
   const suffix = breakpointId
     ? `-${breakpointId.trim().replace(/[^a-zA-Z0-9_-]+/g, "-")}`
     : "";
-  return `wfm-${safe}-appear${suffix}`;
+  return `wfm-${safe}-${kind}${suffix}`;
+}
+
+/** Escapes an interaction id for use inside a double-quoted attribute selector. */
+function cssAttributeValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 /** Offset from the direction the element slides in from or towards. */
@@ -133,7 +135,13 @@ function interactionTransition(interaction: Interaction): string {
 }
 
 function appearAnimation(interaction: Interaction, breakpointId?: string): string {
-  return `${appearAnimationName(interaction.id, breakpointId)} ${interaction.duration}ms ${interaction.easing} ${interaction.delay}ms both`;
+  return `${animationName(interaction.id, "appear", breakpointId)} ${interaction.duration}ms ${interaction.easing} ${interaction.delay}ms both`;
+}
+
+function scrollAnimation(interaction: Interaction, breakpointId?: string): string {
+  // `backwards` covers the delay without leaving the finished animation
+  // filling opacity/transform forever, which would pin :hover/:active.
+  return `${animationName(interaction.id, "scroll", breakpointId)} ${interaction.duration}ms ${interaction.easing} ${interaction.delay}ms backwards`;
 }
 
 /** Base styles plus the node's appear animation and hover/tap transition. */
@@ -141,7 +149,10 @@ function stylesWithInteractions(entry: StyleEntry, breakpointId?: string): CSSPr
   const styles: CSSProperties = { ...entry.styles };
 
   const appear = firstInteraction(entry.interactions, "appear");
-  if (appear) styles.animation = appearAnimation(appear, breakpointId);
+  // Scroll has its own reveal animation; a node carrying both uses scroll and
+  // must not have the appear animation overwritten (or compete) on reveal.
+  const scroll = firstInteraction(entry.interactions, "scroll");
+  if (appear && !scroll) styles.animation = appearAnimation(appear, breakpointId);
 
   // One transition covers both properties; hover wins when both are present.
   const transition =
@@ -198,7 +209,62 @@ function appearKeyframes(
       break;
   }
 
-  return `@keyframes ${appearAnimationName(interaction.id, breakpointId)} {\n  from { ${styleToCss(from)} }\n  to { ${styleToCss(to)} }\n}`;
+  return `@keyframes ${animationName(interaction.id, "appear", breakpointId)} {\n  from { ${styleToCss(from)} }\n  to { ${styleToCss(to)} }\n}`;
+}
+
+/** The state a scroll layer starts in before it enters the viewport. */
+function scrollInitialStyles(interaction: Interaction, base: CSSProperties): CSSProperties {
+  const transform = baseTransform(base);
+  switch (interaction.effect) {
+    case "fade":
+      return transform ? { opacity: 0, transform } : { opacity: 0 };
+    case "slide": {
+      const offset = slideTransform(interaction.direction, 16);
+      return { opacity: 0, transform: transform ? `${offset} ${transform}` : offset };
+    }
+    case "scale":
+      return {
+        opacity: 0,
+        transform: transform ? `scale(0.95) ${transform}` : "scale(0.95)",
+      };
+  }
+}
+
+/** The resolved final state a scroll layer settles in at one breakpoint. */
+function scrollFinalStyles(base: CSSProperties): CSSProperties {
+  return { opacity: baseOpacity(base), transform: baseTransform(base) ?? "none" };
+}
+
+/** One scroll @keyframes block; mirrors the appear end-state rules. */
+function scrollKeyframes(
+  interaction: Interaction,
+  base: CSSProperties,
+  breakpointId?: string,
+): string {
+  return `@keyframes ${animationName(interaction.id, "scroll", breakpointId)} {\n  from { ${styleToCss(scrollInitialStyles(interaction, base))} }\n  to { ${styleToCss(scrollFinalStyles(base))} }\n}`;
+}
+
+/**
+ * Hidden start state and reveal animation for a scroll layer. The hidden rule
+ * is scoped to `.wfm-js`, so a visitor without JavaScript always sees the
+ * resolved final styles from the node rule.
+ */
+function scrollRules(entry: StyleEntry, breakpointId?: string): string[] {
+  const scroll = firstInteraction(entry.interactions, "scroll");
+  if (!scroll) return [];
+  const selector = `.wfm-js [data-wfm-scroll="${cssAttributeValue(scroll.id)}"]`;
+  const revealed = `${selector}.wfm-revealed`;
+  const finalStyles = scrollFinalStyles(entry.styles);
+  return [
+    // The hidden state stops applying the moment the runtime reveals the layer,
+    // so the node's base styles and :hover/:active rules win again.
+    rule(`${selector}:not(.wfm-revealed)`, scrollInitialStyles(scroll, entry.styles)),
+    rule(revealed, { animation: scrollAnimation(scroll, breakpointId) }),
+    // Reduced motion: reveal instantly when in view, with no animation fill.
+    `@media (prefers-reduced-motion: reduce) {\n  ${rule(revealed, { animation: "none" })}\n}`,
+    // Printing has no scrolling: show every scroll layer in its final state.
+    `@media print {\n  ${rule(selector, { animation: "none", ...finalStyles })}\n}`,
+  ];
 }
 
 /**
@@ -258,7 +324,12 @@ function collectEntries(
         entries.set(className, {
           className,
           styles: resolveBoxStyles(mergedProps, context, resolveAssetUrl),
-          interactions: node.interactions ?? [],
+          // The variant root is not rendered as its own element; its effects
+          // belong to the instance wrapper. Instance effects win on conflicts.
+          interactions: [
+            ...(node.interactions ?? []),
+            ...(resolved.root.interactions ?? []),
+          ],
         });
         for (const child of resolved.root.children) {
           visit(child, childContext(mergedProps), depth + 1);
@@ -293,19 +364,26 @@ function rulesForEntries(entries: StyleEntry[], breakpointId?: string): string {
         rule(`.${entry.className}:active`, interactionStateStyles(tap, entry.styles, true)),
       );
     }
+    rules.push(...scrollRules(entry, breakpointId));
   }
   return rules.filter(Boolean).join("\n");
 }
 
-/** Appear keyframes are page-wide; emit each interaction once. */
+/** Interaction keyframes are page-wide; emit each interaction once. */
 function keyframesForEntries(entries: StyleEntry[], breakpointId?: string): string[] {
   const seen = new Set<string>();
   const blocks: string[] = [];
   for (const entry of entries) {
     const appear = firstInteraction(entry.interactions, "appear");
-    if (!appear || seen.has(appear.id)) continue;
-    seen.add(appear.id);
-    blocks.push(appearKeyframes(appear, entry.styles, breakpointId));
+    if (appear && !seen.has(`appear:${appear.id}`)) {
+      seen.add(`appear:${appear.id}`);
+      blocks.push(appearKeyframes(appear, entry.styles, breakpointId));
+    }
+    const scroll = firstInteraction(entry.interactions, "scroll");
+    if (scroll && !seen.has(`scroll:${scroll.id}`)) {
+      seen.add(`scroll:${scroll.id}`);
+      blocks.push(scrollKeyframes(scroll, entry.styles, breakpointId));
+    }
   }
   return blocks;
 }
@@ -328,8 +406,10 @@ function indent(text: string): string {
  * middle blocks are bounded on both sides, and the narrowest block is
  * `max-width` only so it also covers viewports below its width.
  *
- * Appear keyframes bake the resolved opacity/transform into their end state, so
- * each breakpoint gets its own keyframes block and animation name.
+ * Appear and scroll keyframes bake the resolved opacity/transform into their
+ * end state, so each breakpoint gets its own keyframes block and animation
+ * name. Scroll layers are hidden only under the `.wfm-js` root class, which the
+ * runtime script adds, so a no-JS visitor sees the final content.
  */
 export function buildPageCss(project: Project, page: Page, options: RenderOptions): string {
   const resolveAssetUrl = createAssetUrlResolver(project, options);
