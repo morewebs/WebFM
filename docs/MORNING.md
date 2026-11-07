@@ -43,6 +43,17 @@ and property controls: expose text content/color/size, alt text, visible or
 opacity; instance controls with purple override state and reset. Published
 instances render their variant and property values.
 
+**Instance style overrides** — the instance Styles section now edits fill
+(including saved color-style swatches, links and Detach), border, radius,
+shadow, opacity/blend, overflow and effects. Overrides are sparse per
+breakpoint and merge over the master; an Overridden badge and Reset clear the
+active breakpoint's layer. Editor and published CSS share one resolver. Verified
+in Chrome, including independent instances, per-breakpoint overrides, reset/
+undo, color-style links and published/Preview breakpoint output. An adversarial
+review then fixed orphaned overrides on breakpoint removal, color-style
+creation/apply from instances, copy/paste of effective instance styles, and
+made publish media blocks disjoint with per-breakpoint appear keyframes.
+
 **Color styles** — Assets now lists saved **Colors** (create, inline
 rename/recolor, delete, usage counts). Apply one to the selection, or from the
 Fill/Typography editors; linked solid fills and text colors show a badge and
@@ -82,8 +93,12 @@ that were exercised and the bugs found while verifying them.
 
 ## Known limits
 
-- Component instances inherit master style; style overrides and per-variant
-  property defaults are next.
+- Instance style overrides cover appearance (fill/border/radius/shadow/opacity/
+  blend/overflow/effects) but not typography or layout, and Reset clears the
+  whole active-breakpoint layer rather than one property.
+- Assets color swatches apply to selected frames/text; apply an instance's
+  override from the Fill swatches in its own Styles section.
+- Per-variant property defaults are next.
 - Published component variants share child class names, so variant-specific
   styles can collide; per-instance class scoping is a follow-up.
 - Nested component creation from the UI is disabled (the model create path is
@@ -96,8 +111,8 @@ that were exercised and the bugs found while verifying them.
 
 ## Next slices
 
-Code components, CMS, more interaction triggers, instance style overrides and
-per-variant property defaults, then cloud/auth.
+Code components, CMS, more interaction triggers, per-variant property defaults,
+then cloud/auth.
 
 ## Where to look
 

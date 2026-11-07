@@ -128,6 +128,33 @@ export function resolveNodeProps<P>(
   return resolveResponsive(node.responsive, breakpointId, breakpoints);
 }
 
+/**
+ * The raw style-override layer an instance owns for a breakpoint. The primary
+ * breakpoint maps to `base`; a smaller one maps to its sparse override entry.
+ * Returns undefined when the instance has no override layer for it.
+ */
+export function getInstanceStyleOverrideLayer(
+  node: ComponentInstanceNode,
+  breakpointId: BreakpointId,
+  breakpoints: Breakpoint[],
+): DeepPartial<StyleProps> | undefined {
+  const overrides = node.styleOverrides;
+  if (!overrides) return undefined;
+  const primary = breakpoints[0];
+  if (primary && breakpointId === primary.id) return overrides.base;
+  return overrides.overrides[breakpointId];
+}
+
+/** True when the instance has a non-empty style override for the breakpoint. */
+export function hasInstanceStyleOverride(
+  node: ComponentInstanceNode,
+  breakpointId: BreakpointId,
+  breakpoints: Breakpoint[],
+): boolean {
+  const layer = getInstanceStyleOverrideLayer(node, breakpointId, breakpoints);
+  return layer !== undefined && Object.keys(layer).length > 0;
+}
+
 /* ---------------------------------------------------------------- factories */
 
 export function createResponsive<T>(base: T): Responsive<T> {
@@ -331,6 +358,8 @@ export interface CreateComponentInstanceOptions {
   variantId?: string | null;
   propertyValues?: ComponentInstanceNode["propertyValues"];
   props?: DeepPartial<BoxProps>;
+  /** Sparse style overrides layered over the variant root's resolved style. */
+  styleOverrides?: Responsive<DeepPartial<StyleProps>>;
 }
 
 export function createComponentInstance(
@@ -351,6 +380,7 @@ export function createComponentInstance(
     componentId: options.componentId,
     variantId: options.variantId ?? null,
     propertyValues: options.propertyValues ?? {},
+    ...(options.styleOverrides ? { styleOverrides: options.styleOverrides } : {}),
   };
 }
 

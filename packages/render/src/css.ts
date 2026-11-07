@@ -9,7 +9,7 @@ import type {
 import { resolveNodeProps } from "@webfm/model";
 import type { CSSProperties } from "react";
 import { createAssetUrlResolver } from "./assets";
-import { resolveComponentInstance } from "./components";
+import { resolveComponentInstance, resolveInstanceBox } from "./components";
 import {
   type AssetUrlResolver,
   imageClassName,
@@ -97,9 +97,12 @@ function firstInteraction(
 }
 
 /** CSS-safe keyframes name for an interaction's appear animation. */
-function appearAnimationName(interactionId: string): string {
+function appearAnimationName(interactionId: string, breakpointId?: string): string {
   const safe = interactionId.trim().replace(/[^a-zA-Z0-9_-]+/g, "-");
-  return `wfm-${safe}-appear`;
+  const suffix = breakpointId
+    ? `-${breakpointId.trim().replace(/[^a-zA-Z0-9_-]+/g, "-")}`
+    : "";
+  return `wfm-${safe}-appear${suffix}`;
 }
 
 /** Offset from the direction the element slides in from or towards. */
@@ -129,16 +132,16 @@ function interactionTransition(interaction: Interaction): string {
   return `opacity ${timing}, transform ${timing}`;
 }
 
-function appearAnimation(interaction: Interaction): string {
-  return `${appearAnimationName(interaction.id)} ${interaction.duration}ms ${interaction.easing} ${interaction.delay}ms both`;
+function appearAnimation(interaction: Interaction, breakpointId?: string): string {
+  return `${appearAnimationName(interaction.id, breakpointId)} ${interaction.duration}ms ${interaction.easing} ${interaction.delay}ms both`;
 }
 
 /** Base styles plus the node's appear animation and hover/tap transition. */
-function stylesWithInteractions(entry: StyleEntry): CSSProperties {
+function stylesWithInteractions(entry: StyleEntry, breakpointId?: string): CSSProperties {
   const styles: CSSProperties = { ...entry.styles };
 
   const appear = firstInteraction(entry.interactions, "appear");
-  if (appear) styles.animation = appearAnimation(appear);
+  if (appear) styles.animation = appearAnimation(appear, breakpointId);
 
   // One transition covers both properties; hover wins when both are present.
   const transition =
@@ -167,7 +170,11 @@ function interactionStateStyles(
 }
 
 /** One @keyframes block, preserving a base transform and opacity. */
-function appearKeyframes(interaction: Interaction, base: CSSProperties): string {
+function appearKeyframes(
+  interaction: Interaction,
+  base: CSSProperties,
+  breakpointId?: string,
+): string {
   const from: CSSProperties = { opacity: 0 };
   const to: CSSProperties = { opacity: baseOpacity(base) };
   const transform = baseTransform(base);
@@ -191,7 +198,7 @@ function appearKeyframes(interaction: Interaction, base: CSSProperties): string 
       break;
   }
 
-  return `@keyframes ${appearAnimationName(interaction.id)} {\n  from { ${styleToCss(from)} }\n  to { ${styleToCss(to)} }\n}`;
+  return `@keyframes ${appearAnimationName(interaction.id, breakpointId)} {\n  from { ${styleToCss(from)} }\n  to { ${styleToCss(to)} }\n}`;
 }
 
 /**
@@ -243,16 +250,11 @@ function collectEntries(
       }
       case "componentInstance": {
         if (depth > 8) break;
-        const props = resolveNodeProps(node, breakpointId, project.breakpoints);
         const resolved = resolveComponentInstance(project, node);
         if (!resolved || !resolved.root.visible) break;
 
-        const rootProps = resolveNodeProps(resolved.root, breakpointId, project.breakpoints);
-        const mergedProps: BoxProps = {
-          ...rootProps,
-          position: props.position,
-          size: props.size,
-        };
+        const mergedProps = resolveInstanceBox(project, node, breakpointId, resolved.root);
+        if (!mergedProps) break;
         entries.set(className, {
           className,
           styles: resolveBoxStyles(mergedProps, context, resolveAssetUrl),
@@ -272,10 +274,10 @@ function collectEntries(
   return [...entries.values()];
 }
 
-function rulesForEntries(entries: StyleEntry[]): string {
+function rulesForEntries(entries: StyleEntry[], breakpointId?: string): string {
   const rules: string[] = [];
   for (const entry of entries) {
-    rules.push(rule(`.${entry.className}`, stylesWithInteractions(entry)));
+    rules.push(rule(`.${entry.className}`, stylesWithInteractions(entry, breakpointId)));
     if (entry.text) rules.push(rule(`.${entry.text.className}`, entry.text.styles));
     if (entry.image) rules.push(rule(`.${entry.image.className}`, entry.image.styles));
 
@@ -296,14 +298,14 @@ function rulesForEntries(entries: StyleEntry[]): string {
 }
 
 /** Appear keyframes are page-wide; emit each interaction once. */
-function keyframesForEntries(entries: StyleEntry[]): string[] {
+function keyframesForEntries(entries: StyleEntry[], breakpointId?: string): string[] {
   const seen = new Set<string>();
   const blocks: string[] = [];
   for (const entry of entries) {
     const appear = firstInteraction(entry.interactions, "appear");
     if (!appear || seen.has(appear.id)) continue;
     seen.add(appear.id);
-    blocks.push(appearKeyframes(appear, entry.styles));
+    blocks.push(appearKeyframes(appear, entry.styles, breakpointId));
   }
   return blocks;
 }
@@ -318,11 +320,16 @@ function indent(text: string): string {
 /**
  * Builds the publish stylesheet for a page.
  *
- * The primary breakpoint is unscoped. Every smaller breakpoint becomes a
- * `@media (max-width: previousWidth - 1)` block containing fully resolved
- * styles, emitted widest to narrowest so the cascade matches the editor.
- * Interactions are not responsive: their animation and transition declarations
- * repeat in every rule set, while keyframes are emitted once per page.
+ * Breakpoint media blocks are DISJOINT, and each block contains fully resolved
+ * styles for its breakpoint. That matters when a narrower breakpoint removes a
+ * declaration present in a wider one (e.g. a gradient fill replaced by a solid
+ * fill): if the wider rule also matched, its background-image would still paint
+ * over the solid color. The primary block therefore starts at its width, the
+ * middle blocks are bounded on both sides, and the narrowest block is
+ * `max-width` only so it also covers viewports below its width.
+ *
+ * Appear keyframes bake the resolved opacity/transform into their end state, so
+ * each breakpoint gets its own keyframes block and animation name.
  */
 export function buildPageCss(project: Project, page: Page, options: RenderOptions): string {
   const resolveAssetUrl = createAssetUrlResolver(project, options);
@@ -341,16 +348,26 @@ export function buildPageCss(project: Project, page: Page, options: RenderOption
     const entries = collectEntries(project, page, primary.id, resolveAssetUrl);
     const keyframes = keyframesForEntries(entries);
     if (keyframes.length > 0) chunks.push(keyframes.join("\n\n"));
-    chunks.push(rulesForEntries(entries));
+    const body = rulesForEntries(entries);
+    if (breakpoints.length > 1) {
+      chunks.push(`@media (min-width: ${primary.width}px) {\n${indent(body)}\n}`);
+    } else {
+      chunks.push(body);
+    }
   }
 
   for (let index = 1; index < breakpoints.length; index += 1) {
     const breakpoint = breakpoints[index]!;
     const previous = breakpoints[index - 1]!;
     const maxWidth = Math.max(0, previous.width - 1);
+    const isNarrowest = index === breakpoints.length - 1;
+    const query = isNarrowest
+      ? `(max-width: ${maxWidth}px)`
+      : `(max-width: ${maxWidth}px) and (min-width: ${breakpoint.width}px)`;
     const entries = collectEntries(project, page, breakpoint.id, resolveAssetUrl);
-    const body = indent(rulesForEntries(entries));
-    chunks.push(`@media (max-width: ${maxWidth}px) {\n${body}\n}`);
+    const keyframes = keyframesForEntries(entries, breakpoint.id);
+    if (keyframes.length > 0) chunks.push(keyframes.join("\n\n"));
+    chunks.push(`@media ${query} {\n${indent(rulesForEntries(entries, breakpoint.id))}\n}`);
   }
 
   return chunks.filter(Boolean).join("\n\n");

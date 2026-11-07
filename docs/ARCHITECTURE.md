@@ -48,7 +48,10 @@ A project is one JSON document (`packages/model/src/types.ts`):
 - Layout uses `none` (absolute x/y), `stack` (flex direction/gap/padding/align),
   or `grid`.
 - Components store definitions and variants; instances reference a variant and
-  may override exposed property values.
+  may override exposed property values. An instance may also carry sparse
+  `styleOverrides` layered over the variant root's resolved style at each
+  breakpoint; layout stays owned by the master while position and size stay on
+  the instance.
 - Color styles are named colors in `Project.colorStyles` and text styles are
   named typography in `Project.textStyles`. Solid fills carry an optional
   `styleId`; text props an optional `colorStyleId` and `textStyleId`. The
@@ -72,8 +75,16 @@ in two modes:
 - **Editor mode** — inline styles, `data-node-id` attributes, no interactive
   behavior; the editor overlay draws selection on top.
 - **Publish mode** — stable class names plus a generated stylesheet. Base rules
-  come from the primary breakpoint; smaller breakpoints become `@media`
-  blocks. This is what makes a published site responsive without JavaScript.
+  come from the primary breakpoint; smaller breakpoints become disjoint
+  `@media` blocks (bounded on both sides, narrowest `max-width` only) so a
+  narrower breakpoint can remove a wider declaration. This is what makes a
+  published site responsive without JavaScript.
+
+Component instances resolve through one shared `resolveInstanceBox` helper:
+the variant root supplies layout, the instance supplies position/size, and the
+instance's style overrides merge over the root's style at the active
+breakpoint. Both editor rendering and publish CSS call it, so they cannot
+drift.
 
 The static exporter (`packages/publish`) renders every page, copies referenced
 assets, emits `index.html`/route folders, and returns a file map. A zip helper

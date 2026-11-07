@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  createComponentInstance,
   createFrame,
   createProject,
   createText,
   DEFAULT_BREAKPOINTS,
+  defaultStyle,
+  hasInstanceStyleOverride,
   mergeDeep,
   normalizeProject,
   resolveNodeProps,
@@ -136,6 +139,34 @@ describe("responsive resolution", () => {
     expect(layout.padding).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
     expect(layout.grid).toEqual({ columns: 2, rows: 2, columnGap: 10, rowGap: 10 });
   });
+
+  it("replaces a fill when an instance style override changes its type", () => {
+    const base = defaultStyle();
+    base.fill = { type: "solid", color: "#111111", opacity: 1, styleId: "color_1" };
+    base.opacity = 0.8;
+
+    const merged = mergeDeep(base, {
+      fill: {
+        type: "linear-gradient",
+        angle: 45,
+        stops: [
+          { color: "#000000", position: 0 },
+          { color: "#ffffff", position: 100 },
+        ],
+      },
+    });
+
+    expect(merged.fill).toEqual({
+      type: "linear-gradient",
+      angle: 45,
+      stops: [
+        { color: "#000000", position: 0 },
+        { color: "#ffffff", position: 100 },
+      ],
+    });
+    expect(merged.opacity).toBe(0.8);
+    expect(merged.blendMode).toBe("normal");
+  });
 });
 
 describe("normalizeProject", () => {
@@ -169,5 +200,27 @@ describe("tree helpers", () => {
     expect(isSelfOrDescendant(outer, "inner", "text-1")).toBe(true);
     expect(isSelfOrDescendant(outer, "text-1", "inner")).toBe(false);
     expect(indexOfNode(inner, "text-1")).toBe(0);
+  });
+});
+
+describe("component instance style overrides", () => {
+  it("stays optional so older documents keep loading", () => {
+    const plain = createComponentInstance({ componentId: "component_1" });
+    expect(plain.styleOverrides).toBeUndefined();
+    expect(hasInstanceStyleOverride(plain, "bp_desktop", DEFAULT_BREAKPOINTS)).toBe(false);
+  });
+
+  it("reads the base layer for the primary breakpoint and overrides for smaller ones", () => {
+    const instance = createComponentInstance({
+      componentId: "component_1",
+      styleOverrides: {
+        base: { opacity: 0.5 },
+        overrides: { bp_tablet: { opacity: 0.25 } },
+      },
+    });
+
+    expect(hasInstanceStyleOverride(instance, "bp_desktop", DEFAULT_BREAKPOINTS)).toBe(true);
+    expect(hasInstanceStyleOverride(instance, "bp_tablet", DEFAULT_BREAKPOINTS)).toBe(true);
+    expect(hasInstanceStyleOverride(instance, "bp_phone", DEFAULT_BREAKPOINTS)).toBe(false);
   });
 });

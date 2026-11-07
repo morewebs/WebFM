@@ -2,14 +2,14 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 10:32
+**Updated:** 2026-11-07 11:45
 
 ## Current milestone
 
-The core editor, component slice, interactions, guides/snapping and linked
-color/text styles are built and browser-verified. Working through the remaining
-backlog: polygon/star, instance style overrides, richer interactions, then code
-components and CMS.
+The core editor, component slice (including instance style overrides),
+interactions, guides/snapping and linked color/text styles are built. Working
+through the remaining backlog: polygon/star, per-variant property defaults,
+richer interactions, then code components and CMS.
 
 ## Areas
 
@@ -27,7 +27,8 @@ components and CMS.
 | Color styles | done | Assets Colors section: create (auto-links the source layer), rename/recolor/opacity, delete with usage counts. Linked solid fills and text colors; edits propagate across pages and component variants following the breakpoint cascade; manual edits and Delete detach. No-op apply/edit adds no history. Publishing uses denormalized values. Verified. |
 | Text styles | done | Assets Text styles section (create from selection, inline editor for all typography fields, "Aa" preview, usage counts, apply/delete) and a Typography text-style control with linked badge and Detach. Edits propagate across pages and component variants along the breakpoint cascade; manual typography edits detach and freeze resolved values at that breakpoint; applying a text style clears the color link while applying a color style keeps the text link. Color wins for color only. No-op apply/edit adds no history. Verified. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
-| Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
+| Components | done (core+controls+styles) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. |
+| Instance style overrides | done | Sparse fill/border/radius/shadow/opacity/blend/overflow overrides layered over the master at each breakpoint; shared resolver for editor and publish; Styles inspector with Overridden badge and per-breakpoint Reset; color-style propagation/removal/usage scanning; color styles can be created/applied from an instance. Verified. |
 | Layout modes | done | Relative/Absolute/Fixed/Sticky, overflow X/Y/scroll, viewport sizing, min/max with clear; verified. |
 | Shape tools | partial | Rectangle (R), Rounded (U), Oval (O); polygon/star missing. |
 | Grouping | done | Group/ungroup, Add frame/Add stack, Remove wrapper; one history entry; verified. |
@@ -125,6 +126,24 @@ components and CMS.
   inline text-style draft survives autosave; different-style breakpoint
   overrides are no longer recolored by the wider style (model tests).
 
+- Instance style overrides: created a component from a rectangle and selected
+  its instance; the Styles section showed the master fill. Changed it to
+  magenta (Overridden badge appeared, Reset enabled) while the master and a
+  second inserted instance stayed #123456; added a Phone-only green fill and
+  confirmed Desktop stayed magenta; Reset at Phone returned to the inherited
+  magenta, Ctrl+Z restored green; applied a saved color style from the
+  instance swatches, edited the style (instance followed), then a manual hex
+  detached it and later style edits stopped; reload persisted; published CSS
+  emitted #123456 at Desktop, #00ff00 in the Phone block, and the second
+  instance remained #123456. Preview at Phone 390 showed green through
+  container queries.
+- Review fixes verified/covered: disjoint media blocks (primary min-width,
+  bounded middle, narrowest max-width) let a Phone solid fill replace a
+  Desktop gradient; per-breakpoint appear keyframes bake the resolved end
+  state; removeBreakpoint clears instance override layers; fill:null and
+  sparse fills follow the link cascade; color styles create/apply on
+  instances; copy/paste fill/style use the effective instance appearance.
+
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
   overrides, breakpoint bar always blue, 1px shell offsets, variant node ids
@@ -133,14 +152,16 @@ components and CMS.
   propagation ignoring intermediate breakpoint links, no-op style actions
   creating undo steps, Typography Detach not freezing the current color,
   text-style propagation overwriting breakpoints linked to another style,
-  partial typography detaches still inheriting base edits, and style fonts
-  missing after reload.
+  partial typography detaches still inheriting base edits, style fonts missing
+  after reload, orphaned instance overrides on breakpoint removal, sparse-fill
+  links, non-disjoint publish media blocks, and primary-baked appear
+  keyframes.
 
 ## Next
 
 1. Code components, then CMS.
 2. Polygon/star tools.
-3. Instance style overrides; per-variant property defaults; publish class scoping; more interactions.
+3. Per-variant property defaults; publish class scoping; more interactions.
 4. More interaction triggers (scroll, drag) and effect types; multiple effects
    per trigger.
 5. Cloud/auth design discussion (deferred).
@@ -148,8 +169,15 @@ components and CMS.
 ## Known limits
 
 - Linked color styles apply to solid fills and text colors only. Gradient/image
-  fills, borders, shadows and page backgrounds are not linked, and component
-  instances accept a style only through their master's frame/text layers.
+  fills, borders, shadows and page backgrounds are not linked. Instance style
+  overrides support those linked solid fills just like frames; Assets can apply
+  a saved color to a selected frame or text layer, while instances use the Fill
+  swatches in their own Styles section.
+- Instance style overrides cover fill, border, radius, shadows, opacity/blend,
+  overflow and effects. Typography is not part of an instance override (an
+  instance has no text of its own), and layout stays owned by the master.
+- Instance Reset clears the whole active-breakpoint style layer; there is no
+  per-property reset yet.
 - Text styles cover typography only: no paragraph spacing, lists, links or
   rich-text spans. Applying a text style requires an all-text selection.
 - A text style and a color style can be linked together; the color style always
@@ -158,9 +186,8 @@ components and CMS.
   per-instance class scoping is a follow-up (editor is unaffected).
 - Component create/insert is page-only; nested component creation from the UI is
   disabled.
-- Instances inherit master layout/typography/style; position, size and component
-  property values are instance-owned. Style overrides (fill/border/radius/shadow)
-  are next.
+- Instances own position, size, component property values and style overrides;
+  layout and typography come from the master.
 - Component property defaults are component-wide; per-variant defaults are next.
 - Page background editing is not exposed in the no-selection panel (matches
   Framer's Typography/Template panel).

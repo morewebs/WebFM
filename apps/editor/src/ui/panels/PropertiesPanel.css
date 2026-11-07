@@ -635,6 +635,28 @@
   color: var(--wfm-component);
 }
 
+.wfm-pp__property-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.wfm-pp__styles-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wfm-pp__override-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid rgb(176 108 255 / 45%);
+  border-radius: 999px;
+  color: var(--wfm-component);
+  font-size: 9px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .wfm-pp__property-number {
   min-width: 60px;
   text-align: right;

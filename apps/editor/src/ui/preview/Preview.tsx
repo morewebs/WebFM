@@ -38,7 +38,7 @@ export function Preview(): ReactElement {
       ? buildPageCss(project, page, {
           breakpointId: breakpoint.id,
           mode: "publish",
-        }).replace(/@media \(max-width: (\d+)px\)/g, "@container (max-width: $1px)")
+        }).replace(/@media \((max|min)-width:/g, "@container ($1-width:")
       : "";
 
   return (

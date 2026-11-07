@@ -10,7 +10,7 @@ import type {
 import { resolveNodeProps } from "@webfm/model";
 import { type CSSProperties, Fragment, type ReactElement, type ReactNode } from "react";
 import { createAssetUrlResolver } from "./assets";
-import { resolveComponentInstance } from "./components";
+import { resolveComponentInstance, resolveInstanceBox } from "./components";
 import {
   type AssetUrlResolver,
   imageClassName,
@@ -185,13 +185,8 @@ function renderComponentInstance(
     );
   }
 
-  const rootProps = resolveNodeProps(resolved.root, options.breakpointId, project.breakpoints);
-  // The variant root supplies layout and appearance; the instance owns its box.
-  const mergedProps: BoxProps = {
-    ...rootProps,
-    position: props.position,
-    size: props.size,
-  };
+  const mergedProps = resolveInstanceBox(project, node, options.breakpointId, resolved.root);
+  if (!mergedProps) return null;
 
   return (
     <div

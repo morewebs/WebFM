@@ -1121,6 +1121,44 @@ describe("color styles", () => {
     expect(store.getState().applyColorStyle(styleId)).toBe(true);
   });
 
+  it("creates and applies color styles on a selected component instance", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card");
+    if (!created) throw new Error("Component was not created");
+    store.getState().exitComponent();
+    store.getState().select(created.instanceId);
+
+    // The instance resolves to the master's #ffffff solid fill, and creating a
+    // style links that instance through an override.
+    const styleId = store.getState().createColorStyle();
+    if (!styleId) throw new Error("Expected a color style");
+    const linked = instanceNode(store.getState().project, created.instanceId);
+    expect(linked.styleOverrides?.base.fill).toMatchObject({
+      type: "solid",
+      color: "#ffffff",
+      styleId,
+    });
+
+    // A second style can be applied to the instance selection directly.
+    const second = store.getState().createColorStyle(false);
+    if (!second) throw new Error("Expected a second color style");
+    expect(store.getState().applyColorStyle(second)).toBe(true);
+    const applied = instanceNode(store.getState().project, created.instanceId);
+    expect(applied.styleOverrides?.base.fill).toMatchObject({
+      color: "#0099ff",
+      styleId: second,
+    });
+
+    store.getState().undo();
+    const undone = instanceNode(store.getState().project, created.instanceId);
+    expect(undone.styleOverrides?.base.fill).toMatchObject({ styleId });
+  });
+
   it("does not add history entries for an unchanged apply or style edit", async () => {
     const { project, childId } = fixture();
     const { api } = makeApi(project);
@@ -1413,5 +1451,98 @@ describe("text styles", () => {
     expect(resolved.textStyleId).toBeNull();
     expect(resolved.text.fontFamily).toBe(initialFamily);
     expect(resolved.text.fontSize).toBe(24);
+  });
+});
+
+describe("instance style overrides", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function instanceFixture() {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+    store.getState().select(childId);
+    const created = store.getState().createComponentFromSelection("Card")!;
+    store.getState().exitComponent();
+    return { store, instanceId: created.instanceId };
+  }
+
+  it("writes one history entry, skips no-ops and undoes/redoes an override", async () => {
+    const { store, instanceId } = await instanceFixture();
+    const before = store.getState().history?.past.length ?? 0;
+    const untouched = JSON.stringify(store.getState().project);
+
+    // The master already resolves to opacity 1, so this is not an override.
+    store.getState().updateInstanceStyle(instanceId, { opacity: 1 });
+    expect(store.getState().history?.past.length).toBe(before);
+    expect(JSON.stringify(store.getState().project)).toBe(untouched);
+
+    store.getState().updateInstanceStyle(instanceId, { opacity: 0.5 });
+    expect(store.getState().history?.past.length).toBe(before + 1);
+    expect(instanceNode(store.getState().project, instanceId).styleOverrides?.base).toMatchObject({
+      opacity: 0.5,
+    });
+
+    const applied = JSON.stringify(store.getState().project);
+    store.getState().updateInstanceStyle(instanceId, { opacity: 0.5 });
+    expect(store.getState().history?.past.length).toBe(before + 1);
+    expect(JSON.stringify(store.getState().project)).toBe(applied);
+
+    store.getState().undo();
+    expect(instanceNode(store.getState().project, instanceId).styleOverrides).toBeUndefined();
+    store.getState().redo();
+    expect(instanceNode(store.getState().project, instanceId).styleOverrides?.base).toMatchObject({
+      opacity: 0.5,
+    });
+  });
+
+  it("keeps breakpoint layers independent and resets only the active one", async () => {
+    const { store, instanceId } = await instanceFixture();
+    store.getState().updateInstanceStyle(instanceId, { opacity: 0.5 });
+
+    store.getState().setActiveBreakpoint("bp_tablet");
+    store.getState().updateInstanceStyle(instanceId, { opacity: 0.25 });
+    const layered = instanceNode(store.getState().project, instanceId);
+    expect(layered.styleOverrides?.overrides.bp_tablet).toMatchObject({ opacity: 0.25 });
+    expect(store.getState().history?.past.length).toBe(3);
+
+    store.getState().setActiveBreakpoint("bp_desktop");
+    const beforeReset = store.getState().history?.past.length ?? 0;
+    store.getState().resetInstanceStyle(instanceId);
+    expect(store.getState().history?.past.length).toBe(beforeReset + 1);
+    const afterDesktop = instanceNode(store.getState().project, instanceId);
+    expect(afterDesktop.styleOverrides?.base).toEqual({});
+    expect(afterDesktop.styleOverrides?.overrides.bp_tablet).toMatchObject({ opacity: 0.25 });
+
+    // Resetting an empty breakpoint layer adds no history entry.
+    store.getState().resetInstanceStyle(instanceId);
+    expect(store.getState().history?.past.length).toBe(beforeReset + 1);
+
+    store.getState().setActiveBreakpoint("bp_tablet");
+    store.getState().resetInstanceStyle(instanceId);
+    expect(instanceNode(store.getState().project, instanceId).styleOverrides).toBeUndefined();
+    store.getState().undo();
+    expect(instanceNode(store.getState().project, instanceId).styleOverrides?.overrides.bp_tablet)
+      .toMatchObject({ opacity: 0.25 });
+  });
+
+  it("ignores style writes on nodes that are not component instances", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+    store.getState().select(childId);
+
+    const before = store.getState().history?.past.length ?? 0;
+    store.getState().updateInstanceStyle(childId, { opacity: 0.5 });
+    store.getState().resetInstanceStyle(childId);
+    expect(store.getState().history?.past.length).toBe(before);
   });
 });

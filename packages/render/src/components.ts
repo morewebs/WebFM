@@ -1,15 +1,19 @@
 import type {
+  BoxProps,
+  BreakpointId,
   ComponentDefinition,
   ComponentId,
   ComponentInstanceNode,
   ComponentPropertyValue,
   ComponentVariant,
+  DeepPartial,
   FrameNode,
   Project,
   PropertyId,
+  StyleProps,
   VariantId,
 } from "@webfm/model";
-import { findNode } from "@webfm/model";
+import { findNode, mergeDeep, resolveNodeProps, resolveResponsive } from "@webfm/model";
 
 export interface ResolvedComponentInstance {
   component: ComponentDefinition;
@@ -116,6 +120,41 @@ export function resolveComponentInstance(
   }
 
   return { component, variantId: variant.id, root };
+}
+
+/**
+ * Resolves an instance's effective box for a breakpoint. The variant root owns
+ * layout and appearance; the instance owns position and size; its sparse style
+ * overrides are merged over the root's resolved style at the same breakpoint.
+ *
+ * Editor and publish both call this so their cascade cannot drift. Pass an
+ * already-resolved root when the caller already has one.
+ */
+export function resolveInstanceBox(
+  project: Project,
+  instance: ComponentInstanceNode,
+  breakpointId: BreakpointId,
+  resolvedRoot?: FrameNode,
+): BoxProps | null {
+  const root = resolvedRoot ?? resolveComponentInstance(project, instance)?.root;
+  if (!root) return null;
+
+  const rootProps = resolveNodeProps<BoxProps>(root, breakpointId, project.breakpoints);
+  const instanceProps = resolveNodeProps<BoxProps>(instance, breakpointId, project.breakpoints);
+  const overrides: DeepPartial<StyleProps> | undefined = instance.styleOverrides
+    ? resolveResponsive<DeepPartial<StyleProps>>(
+        instance.styleOverrides,
+        breakpointId,
+        project.breakpoints,
+      )
+    : undefined;
+
+  return {
+    ...rootProps,
+    position: instanceProps.position,
+    size: instanceProps.size,
+    style: overrides ? mergeDeep(rootProps.style, overrides) : rootProps.style,
+  };
 }
 
 /**

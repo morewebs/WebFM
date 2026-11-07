@@ -1,6 +1,13 @@
 import { type Draft, produce } from "immer";
 import { describe, expect, it } from "vitest";
-import { createFrame, createImage, createProject, createText, resolveNodeProps } from "./defaults";
+import {
+  createFrame,
+  createImage,
+  createProject,
+  createText,
+  resolveNodeProps,
+  resolveResponsive,
+} from "./defaults";
 import { applyOperation, createHistory, redo, undo } from "./history";
 import {
   addBreakpoint,
@@ -10,6 +17,7 @@ import {
   addInteraction,
   addPage,
   addTextStyle,
+  clearInstanceStyleOverrides,
   countColorStyleUsages,
   countTextStyleUsages,
   createComponentFromNode,
@@ -34,6 +42,7 @@ import {
   updateColorStyle,
   updateGuide,
   updateImageProps,
+  updateInstanceStyle,
   updateInteraction,
   updateNode,
   updatePage,
@@ -1473,6 +1482,361 @@ describe("wrapping", () => {
     expect(unwrapped.project.pages[0]!.root.children.map((node) => node.id)).toEqual(["a", "b"]);
   });
 });
+
+describe("instance style overrides", () => {
+  function instanceOf(project: Project, nodeId: string) {
+    const node = getNode(project, nodeId);
+    if (node.type !== "componentInstance") throw new Error("Expected a component instance.");
+    return node;
+  }
+
+  it("writes sparse overrides at the primary breakpoint and cascades smaller ones", () => {
+    const fixture = componentFixture();
+    const target = { pageId: fixture.pageId };
+    const placement = instanceOf(fixture.project, fixture.instanceId).responsive.base;
+
+    const desktop = run(fixture.project, (draft) =>
+      updateInstanceStyle(draft, {
+        ...target,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_desktop",
+        patch: {
+          fill: { type: "solid", color: "#ff0000", opacity: 1 },
+          radius: { topLeft: 8 },
+        },
+      }),
+    );
+    const instance = instanceOf(desktop.project, fixture.instanceId);
+    expect(instance.styleOverrides?.base).toMatchObject({
+      fill: { type: "solid", color: "#ff0000", opacity: 1 },
+      radius: { topLeft: 8 },
+    });
+    expect(instance.styleOverrides?.overrides).toEqual({});
+    // The instance still owns position and size only.
+    expect(instance.responsive.base.position).toEqual(placement.position);
+    expect(instance.responsive.base.size).toEqual(placement.size);
+
+    const tablet = run(desktop.project, (draft) =>
+      updateInstanceStyle(draft, {
+        ...target,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_tablet",
+        patch: { opacity: 0.4 },
+      }),
+    );
+    const layered = instanceOf(tablet.project, fixture.instanceId);
+    expect(layered.styleOverrides?.overrides.bp_tablet).toMatchObject({ opacity: 0.4 });
+
+    const resolved = resolveResponsive(
+      layered.styleOverrides!,
+      "bp_tablet",
+      tablet.project.breakpoints,
+    );
+    expect(resolved).toMatchObject({
+      fill: { type: "solid", color: "#ff0000" },
+      radius: { topLeft: 8 },
+      opacity: 0.4,
+    });
+  });
+
+  it("clears only the selected breakpoint layer and removes the container when empty", () => {
+    const fixture = componentFixture();
+    const target = { pageId: fixture.pageId };
+    const seeded = run(fixture.project, (draft) => {
+      updateInstanceStyle(draft, {
+        ...target,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_desktop",
+        patch: { opacity: 0.5 },
+      });
+      updateInstanceStyle(draft, {
+        ...target,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_tablet",
+        patch: { opacity: 0.25 },
+      });
+    });
+
+    const clearedDesktop = run(seeded.project, (draft) =>
+      clearInstanceStyleOverrides(draft, {
+        ...target,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_desktop",
+      }),
+    );
+    const afterDesktop = instanceOf(clearedDesktop.project, fixture.instanceId);
+    expect(afterDesktop.styleOverrides?.base).toEqual({});
+    expect(afterDesktop.styleOverrides?.overrides.bp_tablet).toMatchObject({ opacity: 0.25 });
+
+    const clearedTablet = run(clearedDesktop.project, (draft) =>
+      clearInstanceStyleOverrides(draft, {
+        ...target,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_tablet",
+      }),
+    );
+    expect(instanceOf(clearedTablet.project, fixture.instanceId).styleOverrides).toBeUndefined();
+  });
+
+  it("requires a component instance and a known breakpoint", () => {
+    const fixture = componentFixture();
+    const target = { pageId: fixture.pageId };
+
+    expect(() =>
+      run(fixture.project, (draft) =>
+        updateInstanceStyle(draft, {
+          ...target,
+          nodeId: fixture.rootId,
+          breakpointId: "bp_desktop",
+          patch: { opacity: 0.5 },
+        }),
+      ),
+    ).toThrow(/component instance/);
+
+    expect(() =>
+      run(fixture.project, (draft) =>
+        updateInstanceStyle(draft, {
+          ...target,
+          nodeId: fixture.instanceId,
+          breakpointId: "bp_missing",
+          patch: { opacity: 0.5 },
+        }),
+      ),
+    ).toThrow(/Breakpoint/);
+
+    expect(() =>
+      run(fixture.project, (draft) =>
+        clearInstanceStyleOverrides(draft, {
+          ...target,
+          nodeId: fixture.instanceId,
+          breakpointId: "bp_missing",
+        }),
+      ),
+    ).toThrow(/Breakpoint/);
+  });
+});
+
+describe("instance override robustness", () => {
+  it("removes instance style-override layers with their breakpoint", () => {
+    const fixture = componentFixture();
+    const seeded = run(fixture.project, (draft) => {
+      addColorStyle(draft, { id: "style_a", name: "A", color: "#111111", opacity: 1 });
+      updateInstanceStyle(draft, {
+        pageId: fixture.pageId,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_tablet",
+        patch: { fill: { type: "solid", color: "#111111", opacity: 1, styleId: "style_a" } },
+      });
+    }).project;
+    expect(countColorStyleUsages(seeded, "style_a")).toBe(1);
+
+    const removed = run(seeded, (draft) => removeBreakpoint(draft, "bp_tablet")).project;
+    const instance = findNode(removed.pages[0]!.root, fixture.instanceId);
+    if (instance?.type !== "componentInstance") throw new Error("Expected the instance");
+    expect(instance.styleOverrides?.overrides.bp_tablet).toBeUndefined();
+    expect(instance.styleOverrides).toBeUndefined();
+    expect(countColorStyleUsages(removed, "style_a")).toBe(0);
+  });
+
+  it("ends the color-link chain at an explicit fill:null override", () => {
+    const fixture = componentFixture();
+    const seeded = run(fixture.project, (draft) => {
+      addColorStyle(draft, { id: "style_a", name: "A", color: "#111111", opacity: 1 });
+      updateInstanceStyle(draft, {
+        pageId: fixture.pageId,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_desktop",
+        patch: { fill: { type: "solid", color: "#111111", opacity: 1, styleId: "style_a" } },
+      });
+      updateInstanceStyle(draft, {
+        pageId: fixture.pageId,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_tablet",
+        patch: { fill: null },
+      });
+      updateInstanceStyle(draft, {
+        pageId: fixture.pageId,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_phone",
+        patch: { fill: { type: "solid", color: "#abcdef", opacity: 1 } },
+      });
+    }).project;
+
+    const updated = run(seeded, (draft) =>
+      updateColorStyle(draft, "style_a", { color: "#ff0000" }),
+    ).project;
+    const instance = findNode(updated.pages[0]!.root, fixture.instanceId);
+    if (instance?.type !== "componentInstance") throw new Error("Expected the instance");
+    const phoneFill = instance.styleOverrides?.overrides.bp_phone?.fill;
+    if (phoneFill?.type !== "solid") throw new Error("Expected the phone fill");
+    expect(phoneFill.color).toBe("#abcdef");
+  });
+
+  it("handles sparse linked fills in instance overrides", () => {
+    const fixture = componentFixture();
+    const seeded = run(fixture.project, (draft) => {
+      addColorStyle(draft, { id: "style_a", name: "A", color: "#111111", opacity: 1 });
+      updateInstanceStyle(draft, {
+        pageId: fixture.pageId,
+        nodeId: fixture.instanceId,
+        breakpointId: "bp_desktop",
+        patch: { fill: { styleId: "style_a" } },
+      });
+    }).project;
+    expect(countColorStyleUsages(seeded, "style_a")).toBe(1);
+
+    const recolored = run(seeded, (draft) =>
+      updateColorStyle(draft, "style_a", { color: "#ff0000", opacity: 0.5 }),
+    ).project;
+    const instance = findNode(recolored.pages[0]!.root, fixture.instanceId);
+    if (instance?.type !== "componentInstance") throw new Error("Expected the instance");
+    const fill = instance.styleOverrides?.base.fill;
+    if (!fill) throw new Error("Expected the sparse fill");
+    expect(fill).toMatchObject({ color: "#ff0000", opacity: 0.5, styleId: "style_a" });
+
+    const removed = run(recolored, (draft) => removeColorStyle(draft, "style_a")).project;
+    const after = findNode(removed.pages[0]!.root, fixture.instanceId);
+    if (after?.type !== "componentInstance") throw new Error("Expected the instance");
+    expect(after.styleOverrides?.base.fill).toMatchObject({ styleId: null });
+  });
+});
+
+describe("instance color-style overrides", () => {
+  function instanceOf(project: Project, nodeId: string) {
+    const node = getNode(project, nodeId);
+    if (node.type !== "componentInstance") throw new Error("Expected a component instance.");
+    return node;
+  }
+
+  /**
+   * Links the variant root and the instance's desktop override to one style,
+   * and optionally adds narrower instance layers.
+   */
+  function seed(
+    extra?: (draft: Draft<Project>, target: { pageId: string; nodeId: string }) => void,
+  ) {
+    const fixture = componentFixture();
+    const target = { pageId: fixture.pageId, nodeId: fixture.instanceId };
+    const variant = variantOf(fixture.project, fixture.componentId, fixture.variantId);
+    const seeded = run(fixture.project, (draft) => {
+      const styleId = addColorStyle(draft, { name: "Brand", color: "#111111", opacity: 1 });
+      updateBoxProps(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: variant.root.id,
+        breakpointId: "bp_desktop",
+        patch: {
+          style: {
+            fill: { type: "solid", color: "#111111", opacity: 1, styleId },
+          },
+        },
+      });
+      updateInstanceStyle(draft, {
+        ...target,
+        breakpointId: "bp_desktop",
+        patch: { fill: { type: "solid", color: "#111111", opacity: 1, styleId } },
+      });
+      extra?.(draft, target);
+      return styleId;
+    });
+    return { ...fixture, ...seeded };
+  }
+
+  it("propagates edits into the instance override layer and counts the instance once", () => {
+    const { project, result: styleId, instanceId } = seed();
+    expect(countColorStyleUsages(project, styleId)).toBe(2);
+
+    const updated = run(project, (draft) =>
+      updateColorStyle(draft, styleId, { color: "#ff0000", opacity: 0.5 }),
+    ).project;
+    const fill = instanceOf(updated, instanceId).styleOverrides?.base.fill;
+    expect(fill).toMatchObject({ type: "solid", color: "#ff0000", opacity: 0.5, styleId });
+  });
+
+  it("follows the override cascade and stops at a different style id", () => {
+    const seeded = seed((draft, target) => {
+      const otherId = addColorStyle(draft, { name: "Other", color: "#00ff00", opacity: 1 });
+      updateInstanceStyle(draft, {
+        ...target,
+        breakpointId: "bp_tablet",
+        patch: { fill: { type: "solid", color: "#00ff00", opacity: 1, styleId: otherId } },
+      });
+      // A narrower layer without its own id inherits whatever tablet linked.
+      updateInstanceStyle(draft, {
+        ...target,
+        breakpointId: "bp_phone",
+        patch: { fill: { type: "solid", color: "#abcdef", opacity: 1 } },
+      });
+    });
+
+    const updated = run(seeded.project, (draft) =>
+      updateColorStyle(draft, seeded.result, { color: "#0000ff" }),
+    ).project;
+    const overrides = instanceOf(updated, seeded.instanceId).styleOverrides!;
+    expect(overrides.base.fill).toMatchObject({ color: "#0000ff" });
+    expect(overrides.overrides.bp_tablet?.fill).toMatchObject({ color: "#00ff00" });
+    expect(overrides.overrides.bp_phone?.fill).toMatchObject({ color: "#abcdef" });
+  });
+
+  it("stops the chain at a gradient override", () => {
+    const seeded = seed((draft, target) => {
+      updateInstanceStyle(draft, {
+        ...target,
+        breakpointId: "bp_tablet",
+        patch: {
+          fill: {
+            type: "linear-gradient",
+            angle: 90,
+            stops: [
+              { color: "#111111", position: 0 },
+              { color: "#222222", position: 100 },
+            ],
+          },
+        },
+      });
+      updateInstanceStyle(draft, {
+        ...target,
+        breakpointId: "bp_phone",
+        patch: { fill: { type: "solid", color: "#abcdef", opacity: 1 } },
+      });
+    });
+
+    const updated = run(seeded.project, (draft) =>
+      updateColorStyle(draft, seeded.result, { color: "#0000ff" }),
+    ).project;
+    const overrides = instanceOf(updated, seeded.instanceId).styleOverrides!;
+    expect(overrides.overrides.bp_phone?.fill).toMatchObject({ color: "#abcdef" });
+  });
+
+  it("detaches every instance override layer without recoloring", () => {
+    const seeded = seed((draft, target) => {
+      updateInstanceStyle(draft, {
+        ...target,
+        breakpointId: "bp_tablet",
+        patch: {
+          fill: { type: "solid", color: "#111111", opacity: 1, styleId: seededStyleId(draft) },
+        },
+      });
+    });
+    const removed = run(seeded.project, (draft) =>
+      removeColorStyle(draft, seeded.result),
+    ).project;
+    const overrides = instanceOf(removed, seeded.instanceId).styleOverrides!;
+    expect(overrides.base.fill).toMatchObject({ color: "#111111", styleId: null });
+    expect(overrides.overrides.bp_tablet?.fill).toMatchObject({
+      color: "#111111",
+      styleId: null,
+    });
+    expect(countColorStyleUsages(removed, seeded.result)).toBe(0);
+  });
+});
+
+/** The first color style's id while seeding, for tests that link two layers. */
+function seededStyleId(draft: Draft<Project>): string {
+  const style = draft.colorStyles[0];
+  if (!style) throw new Error("Expected a seeded color style.");
+  return style.id;
+}
 
 describe("color styles", () => {
   it("adds a trimmed, validated style and rejects duplicates and bad values", () => {
