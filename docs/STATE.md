@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 13:05
+**Updated:** 2026-11-07 14:30
 
 ## Current milestone
 
@@ -155,11 +155,19 @@ CMS.
   pinned by animation fill, print omission, component-root effects, Preview
   autosave/breakpoint reveal loss, and added the runtime-load fallback.
 
-- Text creation: clicking the top bar Text tool then the canvas created a text
-  layer and immediately opened the inline editor with "Text" selected (0-4);
-  typing replaced it with "Hello Framer" and the layer auto-renamed; drag
-  creation and double-click editing follow the same path. Reported by the user
-  after Framer comparison and fixed.
+- Text tool (Framer parity pass): Text tool + canvas click created an empty
+  text layer and focused an empty editor with the caret at 0; the editor grew
+  from 1px to 96px as "Hello Framer" was typed and the layer beneath stayed
+  hidden; Escape committed the changed text, resized the box and auto-renamed
+  the layer; Enter produced a hard break (`<br>`, two lines, 40px height);
+  leaving an empty layer discarded it; double-clicking an existing text placed
+  the caret at the click offset (7 in "Hello Framer") instead of selecting all.
+  Reported by the user after Framer comparison and fixed.
+- Canvas basics (Framer parity pass): plain wheel panned the canvas (stage top
+  160→40 for deltaY 120) while Cmd/Ctrl+wheel zoomed; Cmd+= zoomed to 125%
+  around the centre; dragging 480,380→920,660 selected the four intersecting
+  top-level layers while a plain click cleared the selection; hovering a layer
+  row outlined that layer on the canvas; ArrowUp stepped Position X 140→141.
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
   overrides, breakpoint bar always blue, 1px shell offsets, variant node ids
@@ -209,7 +217,7 @@ CMS.
 - Component property defaults are component-wide; per-variant defaults are next.
 - Page background editing is not exposed in the no-selection panel (matches
   Framer's Typography/Template panel).
-- Text layers do not auto-rename with content.
+- Text layers auto-rename from their content when an edit commits.
 - Only the first interaction per trigger (appear/scroll/hover/tap) is emitted;
   drag and loop triggers are not built.
 - Scroll effects reveal once when a layer enters the viewport. There is no

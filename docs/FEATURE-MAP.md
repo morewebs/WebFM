@@ -65,16 +65,16 @@ outside this project's scope.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Pan/zoom, breakpoint bar, page root | Done | |
+| Pan/zoom, breakpoint bar, page root | Done | Wheel pans, Cmd/Ctrl+wheel zooms around the pointer, Cmd/Ctrl +/- zooms around the centre. |
 | Select/hover/move/resize/nudge | Done | |
-| Text editing (plain text) | Partial | No rich text spans, links, lists, paragraph spacing. Text-tool creation enters editing with the content selected, like Framer. |
+| Text editing (plain text) | Partial | The Text tool starts an empty layer with a caret; the box grows as you type and the layer beneath is hidden while editing. Enter adds a hard line break, Escape commits, and an empty layer is discarded on exit; double-click places the caret at the click point. No rich text spans, links, lists or paragraph spacing. |
 | Draw tools: frame, stack, grid, oval, text, image | Done | |
 | Shape tools: rectangle, rounded, polygon, star | Partial | Rectangle (R), Rounded (U) and Oval (O) work; polygon/star/pen missing. |
 | Pen/path/vector editing | Missing | |
 | Rotation, scale tool, link tool, sample color | Missing | |
 | Rulers, guides and smart-guide snapping | Done | Drag from a ruler to create, drag a guide to move, drag it off the page to delete; nodes snap to parent/sibling/page/guide edges and centers (4px screen threshold, Alt bypasses). Verified. |
 | Grid overlay | Missing | |
-| Marquee/lasso selection | Missing | Additive click selection only. |
+| Marquee/lasso selection | Partial | Marquee drag on empty canvas selects intersecting top-level layers; Shift adds. No lasso. |
 | Multi-selection transform | Partial | Movement/resize per node; no group bounding transform. |
 | Component edit mode | Done | Basic bar, variant switching, back to page. |
 | Nested components | Missing | Page-only create/insert. |
