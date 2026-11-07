@@ -5,10 +5,13 @@ import { applyOperation, createHistory, redo, undo } from "./history";
 import {
   addBreakpoint,
   addColorStyle,
+  addComponentVariant,
   addGuide,
   addInteraction,
   addPage,
+  addTextStyle,
   countColorStyleUsages,
+  countTextStyleUsages,
   createComponentFromNode,
   duplicateNode,
   type InteractionInput,
@@ -20,6 +23,7 @@ import {
   removeInteraction,
   removeNode,
   removePage,
+  removeTextStyle,
   renameNode,
   renameProject,
   setNodeLocked,
@@ -34,6 +38,7 @@ import {
   updateNode,
   updatePage,
   updateTextProps,
+  updateTextStyle,
   wrapNodes,
 } from "./operations";
 import { collectNodes, findNode } from "./tree";
@@ -46,6 +51,7 @@ import type {
   InteractionTrigger,
   Project,
   SceneNode,
+  TextStyleValues,
 } from "./types";
 
 /** Runs a recipe against a draft and returns both the next project and its result. */
@@ -1764,11 +1770,438 @@ describe("color styles", () => {
     expect(resolved.colorStyleId).toBe(styleId);
   });
 
+  it("leaves breakpoints linked to a different color style untouched", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+
+    const seeded = run(base, (draft) => {
+      addColorStyle(draft, { id: "style_a", name: "A", color: "#111111", opacity: 1 });
+      addColorStyle(draft, { id: "style_b", name: "B", color: "#222222", opacity: 1 });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createFrame({
+          id: "other_style",
+          props: {
+            style: { fill: { type: "solid", color: "#111111", opacity: 1, styleId: "style_a" } },
+          },
+        }),
+      });
+      updateBoxProps(draft, {
+        pageId,
+        nodeId: "other_style",
+        breakpointId: "bp_tablet",
+        patch: {
+          style: {
+            fill: { type: "solid", color: "#222222", opacity: 1, styleId: "style_b" },
+          },
+        },
+      });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({
+          id: "other_text",
+          content: "Other",
+          props: { text: { color: "#111111" }, colorStyleId: "style_a" },
+        }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "other_text",
+        breakpointId: "bp_tablet",
+        patch: { text: { color: "#222222" }, colorStyleId: "style_b" },
+      });
+    }).project;
+
+    const updated = run(seeded, (draft) =>
+      updateColorStyle(draft, "style_a", { color: "#0000ff" }),
+    ).project;
+    const frame = getFrameNode(updated, "other_style");
+    const baseFill = frame.responsive.base.style.fill;
+    const tabletFill = frame.responsive.overrides.bp_tablet?.style?.fill;
+    if (baseFill?.type !== "solid" || tabletFill?.type !== "solid") {
+      throw new Error("Expected fills");
+    }
+    expect(baseFill).toMatchObject({ color: "#0000ff", styleId: "style_a" });
+    expect(tabletFill).toMatchObject({ color: "#222222", styleId: "style_b" });
+
+    const text = findNode(updated.pages[0]!.root, "other_text");
+    if (text?.type !== "text") throw new Error("Expected the text node");
+    expect(text.responsive.base.text.color).toBe("#0000ff");
+    expect(text.responsive.overrides.bp_tablet?.text).toMatchObject({ color: "#222222" });
+    expect(text.responsive.overrides.bp_tablet?.colorStyleId).toBe("style_b");
+  });
+
   it("throws for an unknown color style id", () => {
     const base = createProject();
     expect(() =>
       run(base, (draft) => updateColorStyle(draft, "missing", { color: "#fff" })),
     ).toThrow(/was not found/);
     expect(() => run(base, (draft) => removeColorStyle(draft, "missing"))).toThrow(/was not found/);
+  });
+});
+
+describe("text styles", () => {
+  const STYLE_VALUES: TextStyleValues = {
+    fontFamily: "Inter",
+    fontSize: 20,
+    fontWeight: 600,
+    lineHeight: 24,
+    letterSpacing: 0.5,
+    color: "#112233",
+    align: "left",
+    textTransform: "none",
+    textDecoration: "none",
+    italic: false,
+  };
+
+  it("adds a trimmed, validated style and rejects duplicates and bad values", () => {
+    const base = createProject();
+    const { project, result: id } = run(base, (draft) =>
+      addTextStyle(draft, { name: "  Heading  ", values: STYLE_VALUES }),
+    );
+
+    expect(project.textStyles).toHaveLength(1);
+    expect(project.textStyles[0]).toMatchObject({
+      id,
+      name: "Heading",
+      values: { fontFamily: "Inter", fontSize: 20, color: "#112233" },
+    });
+
+    expect(() =>
+      run(base, (draft) => addTextStyle(draft, { name: " ", values: STYLE_VALUES })),
+    ).toThrow(/cannot be empty/);
+    expect(() =>
+      run(base, (draft) =>
+        addTextStyle(draft, {
+          name: "Bad",
+          values: { ...STYLE_VALUES, fontSize: Number.NaN },
+        }),
+      ),
+    ).toThrow(/finite number/);
+    expect(() =>
+      run(base, (draft) =>
+        addTextStyle(draft, { name: "Bad", values: { ...STYLE_VALUES, lineHeight: -1 } }),
+      ),
+    ).toThrow(/line height/i);
+    expect(() =>
+      run(base, (draft) => addTextStyle(draft, { name: "Bad", values: { ...STYLE_VALUES, color: "" } })),
+    ).toThrow(/color cannot be empty/);
+    expect(() =>
+      run(project, (draft) =>
+        addTextStyle(draft, { name: "heading", values: STYLE_VALUES }),
+      ),
+    ).toThrow(/already exists/);
+  });
+
+  it("propagates changed typography across pages and component variants", () => {
+    const fixture = componentFixture();
+    const variantRoot = fixture.project.components[0]!.variants[0]!.root;
+    const labelNodeId = variantRoot.children.find((child) => child.type === "text")!.id;
+
+    const seeded = run(fixture.project, (draft) => {
+      const styleId = addTextStyle(draft, { name: "Heading", values: STYLE_VALUES });
+      updateTextProps(draft, {
+        componentId: fixture.componentId,
+        variantId: fixture.variantId,
+        nodeId: labelNodeId,
+        breakpointId: "bp_desktop",
+        patch: { text: { ...STYLE_VALUES }, textStyleId: styleId },
+      });
+      const variantId = addComponentVariant(draft, {
+        componentId: fixture.componentId,
+        name: "Large",
+      });
+      updateTextProps(draft, {
+        componentId: fixture.componentId,
+        variantId,
+        nodeId: labelNodeId,
+        breakpointId: "bp_desktop",
+        patch: { textStyleId: styleId },
+      });
+      const page = addPage(draft, { name: "About", path: "/about" });
+      const about = draft.pages.find((candidate) => candidate.id === page)!;
+      insertNode(draft, {
+        pageId: about.id,
+        parentId: about.root.id,
+        node: createText({ id: "about_title", content: "About" }),
+      });
+      updateTextProps(draft, {
+        pageId: about.id,
+        nodeId: "about_title",
+        breakpointId: "bp_desktop",
+        patch: { text: { ...STYLE_VALUES }, textStyleId: styleId },
+      });
+      insertNode(draft, {
+        pageId: about.id,
+        parentId: about.root.id,
+        node: createText({ id: "unlinked_title", content: "Plain" }),
+      });
+      return styleId;
+    });
+    const styleId = seeded.result;
+
+    const { project: updated } = run(seeded.project, (draft) =>
+      updateTextStyle(draft, styleId, {
+        name: "Display",
+        values: { fontSize: 32, color: "#ff0000" },
+      }),
+    );
+
+    expect(updated.textStyles[0]).toMatchObject({
+      name: "Display",
+      values: { fontSize: 32, color: "#ff0000", fontWeight: 600 },
+    });
+
+    for (const variant of updated.components[0]!.variants) {
+      const label = findNode(variant.root, labelNodeId);
+      if (label?.type !== "text") throw new Error("Expected the component label");
+      expect(label.responsive.base.textStyleId).toBe(styleId);
+      expect(label.responsive.base.text).toMatchObject({ fontSize: 32, color: "#ff0000" });
+    }
+
+    const aboutPage = updated.pages.find((page) => page.name === "About")!;
+    const aboutTitle = findNode(aboutPage.root, "about_title");
+    if (aboutTitle?.type !== "text") throw new Error("Expected the About title");
+    expect(aboutTitle.responsive.base.text).toMatchObject({ fontSize: 32, color: "#ff0000" });
+
+    const unlinked = findNode(aboutPage.root, "unlinked_title");
+    if (unlinked?.type !== "text") throw new Error("Expected the unlinked title");
+    expect(unlinked.responsive.base.text.fontSize).toBe(16);
+    expect(unlinked.responsive.base.textStyleId).toBeUndefined();
+  });
+
+  it("follows the breakpoint cascade and lets a color style win for color", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+
+    const seeded = run(base, (draft) => {
+      const styleId = addTextStyle(draft, { name: "Heading", values: STYLE_VALUES });
+      addColorStyle(draft, { id: "color_1", name: "Brand", color: "#00ff00", opacity: 1 });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "cascade_text", content: "Cascade" }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "cascade_text",
+        breakpointId: "bp_desktop",
+        patch: { text: { ...STYLE_VALUES }, textStyleId: styleId },
+      });
+      // Tablet keeps both links: the color style wins for color only.
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "cascade_text",
+        breakpointId: "bp_tablet",
+        patch: { textStyleId: styleId, colorStyleId: "color_1", text: { color: "#00ff00" } },
+      });
+      // Phone detaches the text style; it must not receive any values.
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "cascade_text",
+        breakpointId: "bp_phone",
+        patch: { textStyleId: null },
+      });
+      // A second node links only at tablet, through a textStyleId-only patch.
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "midlink_text", content: "Mid" }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "midlink_text",
+        breakpointId: "bp_tablet",
+        patch: { textStyleId: styleId },
+      });
+      return styleId;
+    });
+    const styleId = seeded.result;
+
+    const updated = run(seeded.project, (draft) =>
+      updateTextStyle(draft, styleId, { values: { fontSize: 28, color: "#ff0000" } }),
+    ).project;
+
+    const cascade = findNode(updated.pages[0]!.root, "cascade_text");
+    if (cascade?.type !== "text") throw new Error("Expected the text node");
+    expect(cascade.responsive.base.text).toMatchObject({ fontSize: 28, color: "#ff0000" });
+    expect(cascade.responsive.overrides.bp_tablet).toMatchObject({
+      textStyleId: styleId,
+      colorStyleId: "color_1",
+      text: { fontSize: 28, color: "#00ff00" },
+    });
+    expect(cascade.responsive.overrides.bp_phone).toMatchObject({
+      textStyleId: null,
+    });
+    expect(cascade.responsive.overrides.bp_phone?.text?.fontSize).toBeUndefined();
+
+    const midlink = findNode(updated.pages[0]!.root, "midlink_text");
+    if (midlink?.type !== "text") throw new Error("Expected the mid-link text node");
+    expect(midlink.responsive.base.text.fontSize).toBe(16);
+    expect(midlink.responsive.overrides.bp_tablet).toMatchObject({
+      textStyleId: styleId,
+      text: { fontSize: 28, color: "#ff0000" },
+    });
+    // Phone inherits the tablet link and values through the cascade; no
+    // override is needed there.
+    const resolvedPhone = resolveNodeProps(midlink, "bp_phone", updated.breakpoints);
+    expect(resolvedPhone.textStyleId).toBe(styleId);
+    expect(resolvedPhone.text).toMatchObject({ fontSize: 28, color: "#ff0000" });
+  });
+
+  it("removes a style and clears references while keeping typography", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+
+    const seeded = run(base, (draft) => {
+      const styleId = addTextStyle(draft, { name: "Heading", values: STYLE_VALUES });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "remove_text", content: "Remove" }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "remove_text",
+        breakpointId: "bp_desktop",
+        patch: { text: { ...STYLE_VALUES }, textStyleId: styleId },
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "remove_text",
+        breakpointId: "bp_tablet",
+        patch: { textStyleId: styleId },
+      });
+      return styleId;
+    });
+    const styleId = seeded.result;
+
+    const removed = run(seeded.project, (draft) => removeTextStyle(draft, styleId)).project;
+    expect(removed.textStyles).toHaveLength(0);
+
+    const text = findNode(removed.pages[0]!.root, "remove_text");
+    if (text?.type !== "text") throw new Error("Expected the text node");
+    expect(text.responsive.base.textStyleId).toBeNull();
+    expect(text.responsive.overrides.bp_tablet?.textStyleId).toBeNull();
+    expect(text.responsive.base.text).toMatchObject({
+      fontFamily: "Inter",
+      fontSize: 20,
+      color: "#112233",
+    });
+  });
+
+  it("counts a layer once across breakpoints and ignores unlinked layers", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+
+    const seeded = run(base, (draft) => {
+      const styleId = addTextStyle(draft, { name: "Heading", values: STYLE_VALUES });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "count_one", content: "One" }),
+      });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "count_two", content: "Two" }),
+      });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({ id: "count_plain", content: "Plain" }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "count_one",
+        breakpointId: "bp_desktop",
+        patch: { textStyleId: styleId },
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "count_one",
+        breakpointId: "bp_phone",
+        patch: { textStyleId: styleId },
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "count_two",
+        breakpointId: "bp_tablet",
+        patch: { textStyleId: styleId },
+      });
+      return styleId;
+    });
+
+    expect(countTextStyleUsages(seeded.project, seeded.result)).toBe(2);
+    expect(countTextStyleUsages(seeded.project, "missing")).toBe(0);
+  });
+
+  it("does not overwrite breakpoints linked to a different text style", () => {
+    const base = createProject();
+    const pageId = base.pages[0]!.id;
+    const rootId = base.pages[0]!.root.id;
+    const valuesA = {
+      fontFamily: "Inter",
+      fontSize: 20,
+      fontWeight: 400,
+      lineHeight: "auto" as const,
+      letterSpacing: 0,
+      color: "#111111",
+      align: "left" as const,
+      textTransform: "none" as const,
+      textDecoration: "none" as const,
+      italic: false,
+    };
+    const valuesB = { ...valuesA, fontFamily: "Poppins", fontSize: 40, color: "#222222" };
+
+    const seeded = run(base, (draft) => {
+      addTextStyle(draft, { id: "text_a", name: "Heading", values: valuesA });
+      addTextStyle(draft, { id: "text_b", name: "Body", values: valuesB });
+      insertNode(draft, {
+        pageId,
+        parentId: rootId,
+        node: createText({
+          id: "mixed_style",
+          content: "Mixed",
+          props: { text: valuesA, textStyleId: "text_a" },
+        }),
+      });
+      updateTextProps(draft, {
+        pageId,
+        nodeId: "mixed_style",
+        breakpointId: "bp_tablet",
+        patch: { text: valuesB, textStyleId: "text_b" },
+      });
+    }).project;
+
+    const updated = run(seeded, (draft) =>
+      updateTextStyle(draft, "text_a", { values: { fontSize: 24, color: "#999999" } }),
+    ).project;
+    const node = findNode(updated.pages[0]!.root, "mixed_style");
+    if (node?.type !== "text") throw new Error("Expected the text node");
+    expect(node.responsive.base.text).toMatchObject({ fontSize: 24, color: "#999999" });
+    const tablet = node.responsive.overrides.bp_tablet;
+    expect(tablet?.text).toMatchObject({
+      fontFamily: "Poppins",
+      fontSize: 40,
+      color: "#222222",
+    });
+    expect(tablet?.textStyleId).toBe("text_b");
+    const resolved = resolveNodeProps(node, "bp_tablet", updated.breakpoints);
+    expect(resolved.text).toMatchObject({ fontFamily: "Poppins", fontSize: 40, color: "#222222" });
+  });
+
+  it("throws for an unknown text style id", () => {
+    const base = createProject();
+    expect(() =>
+      run(base, (draft) => updateTextStyle(draft, "missing", { name: "X" })),
+    ).toThrow(/was not found/);
+    expect(() => run(base, (draft) => removeTextStyle(draft, "missing"))).toThrow(/was not found/);
   });
 });

@@ -10,17 +10,18 @@ outside this project's scope.
 
 - **Done:** editor shell, pages, Frame/Stack/Text/Image, canvas select/move/
   resize, text editing, layers, grouping/wrapping, core Style panel with
-  solid/gradient/image fills, color styles, positioning modes, overflow
-  X/Y/scroll, viewport sizing, min/max fields, rectangle/rounded/oval tools,
-  Google Fonts picker, rulers, guides and smart-guide snapping, responsive
-  breakpoints, components/instances/variants/property controls,
-  Appear/Hover/Tap effects, alignment, context menus, preview, static publish.
+  solid/gradient/image fills, color styles, text styles, positioning modes,
+  overflow X/Y/scroll, viewport sizing, min/max fields,
+  rectangle/rounded/oval tools, Google Fonts picker, rulers, guides and
+  smart-guide snapping, responsive breakpoints,
+  components/instances/variants/property controls, Appear/Hover/Tap effects,
+  alignment, context menus, preview, static publish.
 - **Partial:** Pages, Layers, Assets, Style, Components, Interactions, menus,
   shortcuts, publishing.
-- **Missing (editor-level):** text styles, polygon/star/pen and vector
-  editing, grid overlay, marquee selection, visual effects, code components,
-  CMS, localization, analytics, settings, code overrides, comments/
-  collaboration, branching, Figma import, versioned publishing.
+- **Missing (editor-level):** polygon/star/pen and vector editing, grid
+  overlay, marquee selection, visual effects, code components, CMS,
+  localization, analytics, settings, code overrides, comments/collaboration,
+  branching, Figma import, versioned publishing.
 - **Reserved:** the Agent panel and all AI actions.
 - **Out:** hosting, accounts/cloud deployment (deferred), and Framer's cloud
   marketplace/community.
@@ -53,7 +54,8 @@ outside this project's scope.
 | Assets: image upload/list/insert | Done | |
 | Assets: components | Done | Cards with variant/instance counts and edit. |
 | Assets: colors | Done | Colors section: create (links the source layer), inline rename/recolor/opacity, delete, usage counts; click to apply to the selection. Saved styles also appear in the Fill and Typography editors with linked badges and Detach. Verified. |
-| Assets: text styles, vectors, code overrides | Missing | |
+| Assets: text styles | Done | Text styles section: create from the selection, inline editor for every typography field, "Aa" preview, usage counts, click to apply to selected text layers, hover Edit/Delete. Editing propagates along the breakpoint cascade; manual typography edits detach. Verified. |
+| Assets: vectors, code overrides | Missing | |
 | Assets: folders/templates | Missing | Framer asset panel is folder-based since 2026-10-26. |
 | Style panel | Partial | See Styling. |
 | Agent | Reserved | |
@@ -101,8 +103,9 @@ outside this project's scope.
 | Visual effects (blur, backdrop, etc.) | Missing | Effects section is currently interactions. |
 | Overflow clip/hidden/visible/scroll + X/Y | Done | Per-axis selects and scroll added. |
 | Typography: family/size/weight/line height/spacing/color/align/italic/underline/case | Done | Static font list. |
-| Google Fonts/custom font picker | Missing | |
-| Text styles/paragraph spacing/rich text | Missing | |
+| Google Fonts/custom font picker | Partial | Curated Google Fonts catalog works; custom font upload missing. |
+| Text styles | Done | Text style control at the top of Typography: "None"/saved styles, linked badge, Detach; style edits propagate across pages and component variants. Detaching at a breakpoint freezes the resolved typography. Paragraph spacing and rich-text spans remain missing. |
+| Paragraph spacing/rich text | Missing | No paragraph spacing, lists, links or rich-text spans. |
 | Image fit/position/alt/replace | Done | Intrinsic size missing. |
 | Cursor | Missing | |
 | Code overrides | Missing | |
@@ -158,9 +161,10 @@ outside this project's scope.
 1. ~~Grouping/wrapping/unwrapping~~ — done and verified.
 2. ~~Fill gradients and image fills in the Style panel~~ — done and verified.
 3. ~~Positioning modes and overflow X/Y/Scroll, viewport sizing, min/max~~ — done and verified.
-4. ~~Google Fonts/custom font picker~~ — done; custom font upload and text styles remain.
+4. ~~Google Fonts/custom font picker~~ — Google Fonts done; custom font upload
+   remains.
 5. Shape tools: rectangle and rounded done; polygon/star still missing.
-6. ~~Color styles in Assets~~ — done and verified; text styles remain.
+6. ~~Color styles and text styles in Assets~~ — done and verified.
 7. ~~Rulers/guides/smart guides and snapping~~ — done and verified.
 
 ## P1 gaps

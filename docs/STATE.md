@@ -2,14 +2,14 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 09:52
+**Updated:** 2026-11-07 10:32
 
 ## Current milestone
 
 The core editor, component slice, interactions, guides/snapping and linked
-color styles are built and browser-verified. Working through the remaining
-backlog: text styles, polygon/star, richer interactions, then code components
-and CMS.
+color/text styles are built and browser-verified. Working through the remaining
+backlog: polygon/star, instance style overrides, richer interactions, then code
+components and CMS.
 
 ## Areas
 
@@ -23,8 +23,9 @@ and CMS.
 | Editor plumbing | done | API client, store, autosave, 409 handling, shortcuts, component edit mode. |
 | Editor shell | done | Exact Framer 3.0 geometry (51px top bar, 260px panels), extracted Inter UI font and chrome SVGs. |
 | Canvas | done | Select, move, resize, text edit, draw tools, zoom/pan, breakpoint bar states, component stage and bar. |
-| Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components, Colors, Images), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
+| Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components, Colors, Text styles, Images), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Color styles | done | Assets Colors section: create (auto-links the source layer), rename/recolor/opacity, delete with usage counts. Linked solid fills and text colors; edits propagate across pages and component variants following the breakpoint cascade; manual edits and Delete detach. No-op apply/edit adds no history. Publishing uses denormalized values. Verified. |
+| Text styles | done | Assets Text styles section (create from selection, inline editor for all typography fields, "Aa" preview, usage counts, apply/delete) and a Typography text-style control with linked badge and Detach. Edits propagate across pages and component variants along the breakpoint cascade; manual typography edits detach and freeze resolved values at that breakpoint; applying a text style clears the color link while applying a color style keeps the text link. Color wins for color only. No-op apply/edit adds no history. Verified. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
 | Layout modes | done | Relative/Absolute/Fixed/Sticky, overflow X/Y/scroll, viewport sizing, min/max with clear; verified. |
@@ -110,6 +111,19 @@ and CMS.
   narrower breakpoints, no-op undo entries on repeated apply/save, and keyboard
   focus on the new controls. New model/store tests cover the cascade and no-op
   cases.
+- Text styles: creating from a selected text layer linked it (1 layer, "Aa"
+  16px preview); editing the style to 40px magenta updated the layer; a second
+  text layer applied the style (2 layers); a manual 20px edit detached only
+  that layer; a later style edit to 60px cyan left the detached layer at 20px
+  magenta; applying a color style kept both links while text-style color edits
+  left the color style's yellow intact and still propagated size to 70px;
+  Phone Detach froze 70px while Desktop followed a later 30px edit; delete
+  kept values and Ctrl+Z restored the style and link; reload persisted;
+  published styles.css contained the resolved font/size/color values.
+- Review fixes verified: editing a style family to Lora left a Phone manual
+  edit frozen at Inter; saved Google fonts load for style previews; an open
+  inline text-style draft survives autosave; different-style breakpoint
+  overrides are no longer recolored by the wider style (model tests).
 
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
@@ -117,12 +131,15 @@ and CMS.
   (now shared across variants), snapping using rects cached by the last
   animation frame (now measured synchronously at pointer-down), color-style
   propagation ignoring intermediate breakpoint links, no-op style actions
-  creating undo steps, and Typography Detach not freezing the current color.
+  creating undo steps, Typography Detach not freezing the current color,
+  text-style propagation overwriting breakpoints linked to another style,
+  partial typography detaches still inheriting base edits, and style fonts
+  missing after reload.
 
 ## Next
 
 1. Code components, then CMS.
-2. Text styles; polygon/star tools.
+2. Polygon/star tools.
 3. Instance style overrides; per-variant property defaults; publish class scoping; more interactions.
 4. More interaction triggers (scroll, drag) and effect types; multiple effects
    per trigger.
@@ -133,6 +150,10 @@ and CMS.
 - Linked color styles apply to solid fills and text colors only. Gradient/image
   fills, borders, shadows and page backgrounds are not linked, and component
   instances accept a style only through their master's frame/text layers.
+- Text styles cover typography only: no paragraph spacing, lists, links or
+  rich-text spans. Applying a text style requires an all-text selection.
+- A text style and a color style can be linked together; the color style always
+  wins for color. Applying a text style clears the color link in that layer.
 - Static publish shares component child class names across instances/variants;
   per-instance class scoping is a follow-up (editor is unaffected).
 - Component create/insert is page-only; nested component creation from the UI is

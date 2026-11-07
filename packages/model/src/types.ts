@@ -14,6 +14,7 @@ export type VariantId = string;
 export type AssetId = string;
 export type PropertyId = string;
 export type ColorStyleId = string;
+export type TextStyleId = string;
 
 export type ISODateString = string;
 
@@ -40,6 +41,12 @@ export interface Project {
    * rendering and publishing never need a project lookup.
    */
   colorStyles: ColorStyle[];
+  /**
+   * Project-wide saved typography. Text nodes may reference one through
+   * `textStyleId`, while every typography value stays denormalized on the node
+   * so rendering and publishing never need a project lookup.
+   */
+  textStyles: TextStyle[];
   publish?: PublishConfig;
 }
 
@@ -50,6 +57,28 @@ export interface ColorStyle {
   color: string;
   /** 0..1 */
   opacity: number;
+}
+
+/** The typography fields a text style owns. */
+export interface TextStyleValues {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: number;
+  /** Pixels, or "auto" for the font's natural line height. */
+  lineHeight: number | "auto";
+  letterSpacing: number;
+  color: string;
+  align: TextAlign;
+  textTransform: TextTransform;
+  textDecoration: TextDecoration;
+  italic: boolean;
+}
+
+/** A named, project-wide typography style. */
+export interface TextStyle {
+  id: TextStyleId;
+  name: string;
+  values: TextStyleValues;
 }
 
 export interface Breakpoint {
@@ -308,6 +337,8 @@ export interface TextProps {
   text: TextContent;
   /** Linked color style for the text color; null/absent means unlinked. */
   colorStyleId?: ColorStyleId | null;
+  /** Linked text style for the typography; null/absent means unlinked. */
+  textStyleId?: TextStyleId | null;
 }
 
 export interface TextContent {

@@ -131,6 +131,14 @@ describe("isGoogleFont", () => {
 });
 
 describe("collectProjectFonts", () => {
+  it("collects families that only appear in breakpoint overrides", () => {
+    const responsive = text("node_responsive", "Inter");
+    responsive.responsive.overrides.bp_phone = { text: { fontFamily: "Poppins" } };
+    const project = projectWith([pageWith("home", [responsive])]);
+
+    expect(collectProjectFonts(project)).toEqual(["Inter", "Poppins"]);
+  });
+
   it("collects unique Google families from pages and component variants", () => {
     const nested = createFrame({
       id: "node_nested",

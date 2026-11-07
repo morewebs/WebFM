@@ -53,6 +53,19 @@ including propagation, detach, undo, reload and published CSS. An
 adversarial review then fixed intermediate-breakpoint propagation, no-op undo
 entries and breakpoint text detach.
 
+**Text styles** — Assets now has a **Text styles** section: create from the
+selected text layer, edit every typography field inline (family, size,
+weight, line height, spacing, color, align, case, decoration, italic), apply
+to selected text layers, delete, and usage counts with an "Aa" preview.
+Typography also gets a **Text style** control with a linked badge and
+**Detach**. Edits propagate across pages and component variants along the
+breakpoint cascade; manual typography edits detach; color styles still win for
+color. Denormalized values mean Preview and publish need no lookup. Verified in
+Chrome (create, apply, inline edit, detach, delete/undo, reload, publish). An
+adversarial review then fixed cross-style breakpoint propagation, partial
+breakpoint detaches, font collection for overrides/styles, and autosave-safe
+inline drafts.
+
 **Breakpoints** — add a custom breakpoint with the breakpoint bar + (name and
 width; narrower than the primary), switch, and remove non-primary breakpoints;
 page roots get width overrides and dead overrides are cleaned up. Verified in
@@ -75,8 +88,9 @@ that were exercised and the bugs found while verifying them.
   styles can collide; per-instance class scoping is a follow-up.
 - Nested component creation from the UI is disabled (the model create path is
   page-only).
-- Text/color styles, polygon/star/pen, the grid overlay and marquee selection
-  are the next editor gaps.
+- Text styles cover typography only (no paragraph spacing, lists or rich-text
+  spans); polygon/star/pen, the grid overlay and marquee selection are the next
+  editor gaps.
 - Cloud deployment and auth are deliberately deferred; the storage and auth
   seams are documented.
 

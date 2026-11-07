@@ -36,7 +36,7 @@ editor ----------------> server
 A project is one JSON document (`packages/model/src/types.ts`):
 
 - `Project` — schema version, revision, breakpoints, pages, components, assets,
-  color styles, publish settings.
+  color styles, text styles, publish settings.
 - `Page` — name, route path, background, root `FrameNode`.
 - Nodes — `frame`, `text`, `image`, `componentInstance`, arranged in a tree.
 - Every visual property that can differ by breakpoint is stored in
@@ -49,11 +49,12 @@ A project is one JSON document (`packages/model/src/types.ts`):
   or `grid`.
 - Components store definitions and variants; instances reference a variant and
   may override exposed property values.
-- Color styles are named colors in `Project.colorStyles`. Solid fills carry an
-  optional `styleId` and text props an optional `colorStyleId`; the resolved
-  color and opacity stay denormalized on each usage so the renderer and static
-  publish never need a project lookup. Editing a style rewrites every linked
-  usage.
+- Color styles are named colors in `Project.colorStyles` and text styles are
+  named typography in `Project.textStyles`. Solid fills carry an optional
+  `styleId`; text props an optional `colorStyleId` and `textStyleId`. The
+  resolved color/opacity and every typography value stay denormalized on each
+  usage so the renderer and static publish never need a project lookup. Editing
+  a style rewrites every linked usage; a color style wins for color only.
 
 Operations mutate an Immer draft (`packages/model/src/operations.ts`). Undo/redo
 uses Immer patches (`packages/model/src/history.ts`), so an operation never has

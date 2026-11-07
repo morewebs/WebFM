@@ -13,6 +13,7 @@ import {
   addColorStyle as addColorStyleOperation,
   addComponentVariant as addComponentVariantOperation,
   addGuide as addGuideOperation,
+  addTextStyle as addTextStyleOperation,
   applyOperation,
   type BoxProps,
   type Breakpoint,
@@ -28,6 +29,7 @@ import {
   createComponentFromNode,
   createHistory,
   type DeepPartial,
+  defaultTextProps,
   duplicateNode,
   findNode,
   findParent,
@@ -48,6 +50,7 @@ import {
   removeColorStyle as removeColorStyleOperation,
   removeGuide as removeGuideOperation,
   removeNode,
+  removeTextStyle as removeTextStyleOperation,
   renameComponent as renameComponentOperation,
   renameComponentVariant as renameComponentVariantOperation,
   renameNode,
@@ -55,7 +58,13 @@ import {
   type SceneNode,
   type SceneTarget,
   setInstanceVariant as setInstanceVariantOperation,
+  type TextNode,
   type TextProps,
+  type TextStyle,
+  type TextStyleId,
+  type TextStylePatch,
+  type TextStyleValues,
+  textStyleValuesFromText,
   undo as undoHistory,
   unwrapNode,
   updateBoxProps,
@@ -63,6 +72,7 @@ import {
   updateGuide as updateGuideOperation,
   updateImageProps,
   updateTextProps,
+  updateTextStyle as updateTextStyleOperation,
   type VariantId,
   wrapNodes,
 } from "@webfm/model";
@@ -183,6 +193,19 @@ export interface ProjectStoreState {
   removeColorStyle(id: ColorStyleId): void;
   /** Applies a color style to the selected layer(s) in the active scene. */
   applyColorStyle(id: ColorStyleId): boolean;
+  /**
+   * Adds a project text style. When `fromSelection` is true and the selection
+   * contains a text layer, its resolved typography seeds the style; otherwise it
+   * falls back to the default text style. The source layer is linked in the same
+   * history entry.
+   */
+  createTextStyle(fromSelection?: boolean): TextStyleId | null;
+  /** Edits a text style and propagates typography to every linked usage. */
+  updateTextStyle(id: TextStyleId, patch: TextStylePatch): boolean;
+  /** Deletes a text style and detaches every linked usage without retyping. */
+  removeTextStyle(id: TextStyleId): void;
+  /** Applies a text style to every selected text layer in the active scene. */
+  applyTextStyle(id: TextStyleId): boolean;
   undo(): void;
   redo(): void;
   saveNow(): Promise<void>;
@@ -331,6 +354,50 @@ function uniqueColorStyleName(styles: ColorStyle[]): string {
   let index = 1;
   while (taken.has(`color ${index}`)) index += 1;
   return `Color ${index}`;
+}
+
+/** "Text style 1", "Text style 2", … skipping names already in the project. */
+function uniqueTextStyleName(styles: TextStyle[]): string {
+  const taken = new Set(styles.map((style) => style.name.trim().toLowerCase()));
+  let index = 1;
+  while (taken.has(`text style ${index}`)) index += 1;
+  return `Text style ${index}`;
+}
+
+const TEXT_STYLE_VALUE_KEYS: ReadonlyArray<keyof TextStyleValues> = [
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "color",
+  "align",
+  "textTransform",
+  "textDecoration",
+  "italic",
+];
+
+/** True when a patch would leave the saved style untouched. */
+function isTextStylePatchNoop(style: TextStyle, patch: TextStylePatch): boolean {
+  if (patch.name !== undefined && patch.name.trim() !== style.name) return false;
+  if (patch.values === undefined) return true;
+  for (const key of TEXT_STYLE_VALUE_KEYS) {
+    const value = patch.values[key];
+    if (value === undefined) continue;
+    const normalized = key === "fontFamily" || key === "color" ? String(value).trim() : value;
+    if (normalized !== style.values[key]) return false;
+  }
+  return true;
+}
+
+/** True when a resolved text layer already matches a saved style. */
+function textLayerMatchesStyle(
+  props: BoxProps & TextProps,
+  style: TextStyle,
+): boolean {
+  if (props.textStyleId !== style.id || props.colorStyleId != null) return false;
+  const resolved = textStyleValuesFromText(props.text);
+  return TEXT_STYLE_VALUE_KEYS.every((key) => resolved[key] === style.values[key]);
 }
 
 export type ProjectStore = UseBoundStore<StoreApi<ProjectStoreState>>;
@@ -745,6 +812,44 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         if (!scene || !project) return;
         const breakpointId = state.activeBreakpointId;
 
+        // Manual typography edits detach the text style; manual color edits
+        // detach both links. Style-application callers set the id explicitly.
+        let nextPatch = patch;
+        const typographyEdit =
+          patch.text !== undefined &&
+          TEXT_STYLE_VALUE_KEYS.some((key) => patch.text?.[key] !== undefined);
+        if (
+          typographyEdit &&
+          patch.textStyleId === undefined &&
+          patch.colorStyleId === undefined
+        ) {
+          nextPatch = { ...patch, textStyleId: null };
+          if (patch.text?.color !== undefined) {
+            nextPatch = { ...nextPatch, colorStyleId: null };
+          }
+        }
+
+        // Detaching at a smaller breakpoint must freeze the resolved
+        // typography, not just drop the id: otherwise later style edits still
+        // flow through the linked base values beneath the sparse override.
+        const detachNode = findNode(scene.root, nodeId);
+        if (detachNode?.type === "text" && nextPatch.textStyleId === null) {
+          const resolved = resolveNodeProps<BoxProps & TextProps>(
+            detachNode,
+            breakpointId,
+            project.breakpoints,
+          );
+          if (resolved.textStyleId != null) {
+            nextPatch = {
+              ...nextPatch,
+              text: {
+                ...textStyleValuesFromText(resolved.text),
+                ...(nextPatch.text ?? {}),
+              },
+            };
+          }
+        }
+
         // Content edits auto-rename a node whose name still mirrors its text.
         let autoName: string | null = null;
         const nextContent = patch.text?.content;
@@ -760,7 +865,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         }
 
         applyRecipe("Update text", (draft) => {
-          updateTextProps(draft, withTarget(scene.target, { nodeId, breakpointId, patch }));
+          updateTextProps(draft, withTarget(scene.target, { nodeId, breakpointId, patch: nextPatch }));
           if (autoName !== null) {
             renameNode(draft, withTarget(scene.target, { nodeId }), autoName);
           }
@@ -1171,6 +1276,123 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
                 }),
               );
             }
+          }
+        });
+      },
+
+      createTextStyle(fromSelection = true) {
+        const state = get();
+        const project = state.project;
+        const scene = currentScene();
+        if (!project) return null;
+
+        let values: TextStyleValues = textStyleValuesFromText(defaultTextProps().text);
+        // Creating a style from a text layer links that layer to the new style,
+        // the way Framer does when a text style is saved from the selection.
+        let seedNodeId: NodeId | null = null;
+        if (fromSelection && scene) {
+          for (const nodeId of state.selection) {
+            const node = findNode(scene.root, nodeId);
+            if (node?.type !== "text") continue;
+            const props = resolveNodeProps<BoxProps & TextProps>(
+              node,
+              state.activeBreakpointId,
+              project.breakpoints,
+            );
+            values = textStyleValuesFromText(props.text);
+            seedNodeId = nodeId;
+            break;
+          }
+        }
+
+        const name = uniqueTextStyleName(project.textStyles);
+        const breakpointId = state.activeBreakpointId;
+        return applyRecipeWithResult("Create text style", (draft) => {
+          const id = addTextStyleOperation(draft, { name, values });
+          if (seedNodeId && scene) {
+            updateTextProps(
+              draft,
+              withTarget(scene.target, {
+                nodeId: seedNodeId,
+                breakpointId,
+                patch: {
+                  text: values,
+                  textStyleId: id,
+                  colorStyleId: null,
+                },
+              }),
+            );
+          }
+          return id;
+        });
+      },
+
+      updateTextStyle(id, patch) {
+        const style = get().project?.textStyles.find((candidate) => candidate.id === id);
+        if (style && isTextStylePatchNoop(style, patch)) return true;
+        return runRecipe("Update text style", (draft) => {
+          updateTextStyleOperation(draft, id, patch);
+        });
+      },
+
+      removeTextStyle(id) {
+        applyRecipe("Remove text style", (draft) => {
+          removeTextStyleOperation(draft, id);
+        });
+      },
+
+      applyTextStyle(id) {
+        const state = get();
+        const scene = currentScene();
+        const project = state.project;
+        if (!scene || !project) {
+          set({ error: "Open a page before applying a text style." });
+          return false;
+        }
+        const style = project.textStyles.find((candidate) => candidate.id === id);
+        if (!style) {
+          set({ error: `Text style "${id}" was not found.` });
+          return false;
+        }
+
+        const targetNodes: TextNode[] = [];
+        for (const nodeId of state.selection) {
+          const node = findNode(scene.root, nodeId);
+          if (node?.type !== "text") {
+            set({ error: "Select text layers to apply a text style." });
+            return false;
+          }
+          targetNodes.push(node);
+        }
+        if (targetNodes.length === 0) {
+          set({ error: "Select a text layer to apply a text style." });
+          return false;
+        }
+
+        const breakpointId = state.activeBreakpointId;
+        const alreadyApplied = targetNodes.every((node) =>
+          textLayerMatchesStyle(
+            resolveNodeProps<BoxProps & TextProps>(node, breakpointId, project.breakpoints),
+            style,
+          ),
+        );
+        // Re-applying the same style must not add an undo step.
+        if (alreadyApplied) return true;
+
+        return runRecipe("Apply text style", (draft) => {
+          for (const node of targetNodes) {
+            updateTextProps(
+              draft,
+              withTarget(scene.target, {
+                nodeId: node.id,
+                breakpointId,
+                patch: {
+                  text: { ...style.values },
+                  textStyleId: style.id,
+                  colorStyleId: null,
+                },
+              }),
+            );
           }
         });
       },
