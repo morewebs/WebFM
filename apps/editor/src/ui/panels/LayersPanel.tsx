@@ -389,6 +389,14 @@ export function LayersPanel() {
         draggable={!isEditing && !isRoot && !node.locked}
         onClick={(event) => select(node.id, event.shiftKey || event.metaKey || event.ctrlKey)}
         onDoubleClick={() => handleRowDoubleClick(node)}
+        onPointerEnter={() => {
+          if (isRoot || node.locked) return;
+          useProjectStore.getState().setHovered(node.id);
+        }}
+        onPointerLeave={() => {
+          const store = useProjectStore.getState();
+          if (store.hoveredNodeId === node.id) store.setHovered(null);
+        }}
         onContextMenu={(event) => openMenu(event, node)}
         onKeyDown={(event) => handleRowKeyDown(event, node)}
         onDragStart={(event) => handleDragStart(event, node)}

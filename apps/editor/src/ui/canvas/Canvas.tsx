@@ -661,7 +661,20 @@ interface GuideSession {
   guideId?: string;
 }
 
-type Session = MoveSession | ResizeSession | PanSession | DrawSession | GuideSession;
+interface MarqueeSession {
+  kind: "marquee";
+  pointerId: number;
+  startClient: CanvasPoint;
+  additive: boolean;
+}
+
+type Session =
+  | MoveSession
+  | ResizeSession
+  | PanSession
+  | DrawSession
+  | GuideSession
+  | MarqueeSession;
 
 interface GuidePreview {
   axis: Guide["axis"];
@@ -721,6 +734,7 @@ export function Canvas() {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [rects, setRects] = useState<Map<NodeId, CanvasRect>>(() => new Map());
   const [drawRect, setDrawRect] = useState<CanvasRect | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<CanvasRect | null>(null);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const [guidePreview, setGuidePreview] = useState<GuidePreview | null>(null);
   const [breakpointMenuOpen, setBreakpointMenuOpen] = useState(false);
@@ -852,23 +866,30 @@ export function Canvas() {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const onWheel = (event: WheelEvent): void => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      event.preventDefault();
       const state = useProjectStore.getState();
-      const rect = viewport.getBoundingClientRect();
-      const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      const nextZoom = clampZoom(state.zoom * Math.exp(-event.deltaY * 0.0025));
-      if (Math.abs(nextZoom - state.zoom) < 0.0001) return;
-      const nextPan = zoomPanAtPointer(
-        pointer,
-        viewport.clientWidth,
-        pageWidth,
-        state.zoom,
-        nextZoom,
-        state.pan,
-      );
-      state.setZoom(nextZoom);
-      state.setPan(nextPan);
+      if (event.ctrlKey || event.metaKey) {
+        // Cmd/Ctrl + wheel and trackpad pinch zoom around the pointer.
+        event.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+        const nextZoom = clampZoom(state.zoom * Math.exp(-event.deltaY * 0.0025));
+        if (Math.abs(nextZoom - state.zoom) < 0.0001) return;
+        const nextPan = zoomPanAtPointer(
+          pointer,
+          viewport.clientWidth,
+          pageWidth,
+          state.zoom,
+          nextZoom,
+          state.pan,
+        );
+        state.setZoom(nextZoom);
+        state.setPan(nextPan);
+        return;
+      }
+      // A plain wheel scroll pans the canvas, as in Framer.
+      if (event.deltaX === 0 && event.deltaY === 0) return;
+      event.preventDefault();
+      state.setPan({ x: state.pan.x - event.deltaX, y: state.pan.y - event.deltaY });
     };
     viewport.addEventListener("wheel", onWheel, { passive: false });
     return () => viewport.removeEventListener("wheel", onWheel);
@@ -1372,8 +1393,27 @@ export function Canvas() {
 
     const nodeElement = target.closest<HTMLElement>("[data-node-id]");
     if (!nodeElement) {
-      state.clearSelection();
       state.setHovered(null);
+      if (event.button === 0) {
+        // Dragging on empty canvas draws a marquee; a plain click clears the
+        // selection when the pointer goes up without moving.
+        const viewportRect = viewport.getBoundingClientRect();
+        sessionRef.current = {
+          kind: "marquee",
+          pointerId: event.pointerId,
+          startClient: { x: event.clientX, y: event.clientY },
+          additive: event.shiftKey || event.metaKey || event.ctrlKey,
+        };
+        setMarqueeRect({
+          left: event.clientX - viewportRect.left,
+          top: event.clientY - viewportRect.top,
+          width: 0,
+          height: 0,
+        });
+        viewport.setPointerCapture(event.pointerId);
+        return;
+      }
+      state.clearSelection();
       return;
     }
 
@@ -1444,6 +1484,23 @@ export function Canvas() {
 
     if (session.kind === "guide") {
       updateGuideDrag(session, event);
+      return;
+    }
+
+    if (session.kind === "marquee") {
+      const viewport = viewportRef.current;
+      if (!viewport) return;
+      const viewportRect = viewport.getBoundingClientRect();
+      const startX = session.startClient.x - viewportRect.left;
+      const startY = session.startClient.y - viewportRect.top;
+      const endX = event.clientX - viewportRect.left;
+      const endY = event.clientY - viewportRect.top;
+      setMarqueeRect({
+        left: Math.min(startX, endX),
+        top: Math.min(startY, endY),
+        width: Math.abs(endX - startX),
+        height: Math.abs(endY - startY),
+      });
       return;
     }
 
@@ -1644,6 +1701,50 @@ export function Canvas() {
     if (session.tool === "text" && insertedId) beginTextEditing(insertedId, 0);
   };
 
+  const finishMarquee = (session: MarqueeSession, event: ReactPointerEvent<HTMLDivElement>): void => {
+    setMarqueeRect(null);
+    const state = useProjectStore.getState();
+    const currentProject = state.project;
+    const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
+    const stage = stageRef.current;
+    const dragged =
+      Math.hypot(event.clientX - session.startClient.x, event.clientY - session.startClient.y) >=
+      DRAW_THRESHOLD;
+    if (!dragged) {
+      state.clearSelection();
+      return;
+    }
+    if (!currentProject || !currentScene || !stage) return;
+    if (currentScene.root.type !== "frame") return;
+    const bounds = {
+      left: Math.min(session.startClient.x, event.clientX),
+      top: Math.min(session.startClient.y, event.clientY),
+      right: Math.max(session.startClient.x, event.clientX),
+      bottom: Math.max(session.startClient.y, event.clientY),
+    };
+    const hits: NodeId[] = [];
+    // Marquee selects the direct children of the scene, like Framer's
+    // top-level selection: dragging over a nested layer selects its frame.
+    for (const child of currentScene.root.children) {
+      if (!child.visible || child.locked) continue;
+      const element = findNodeElement(stage, child.id);
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      if (
+        rect.left <= bounds.right &&
+        rect.right >= bounds.left &&
+        rect.top <= bounds.bottom &&
+        rect.bottom >= bounds.top
+      ) {
+        hits.push(child.id);
+      }
+    }
+    const merged = session.additive
+      ? [...state.selection, ...hits.filter((id) => !state.selection.includes(id))]
+      : hits;
+    state.selectMany(merged);
+  };
+
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const session = sessionRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
@@ -1656,6 +1757,7 @@ export function Canvas() {
     }
     if (session.kind === "draw") finishDraw(session, event);
     else if (session.kind === "guide") finishGuide(session, event);
+    else if (session.kind === "marquee") finishMarquee(session, event);
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1663,6 +1765,7 @@ export function Canvas() {
     if (!session || session.pointerId !== event.pointerId) return;
     sessionRef.current = null;
     setDrawRect(null);
+    setMarqueeRect(null);
     setSnapLines([]);
     setGuidePreview(null);
     const viewport = viewportRef.current;
@@ -2056,6 +2159,18 @@ export function Canvas() {
               top: drawRect.top,
               width: drawRect.width,
               height: drawRect.height,
+            }}
+          />
+        ) : null}
+
+        {marqueeRect ? (
+          <div
+            className="wfm-canvas-marquee"
+            style={{
+              left: marqueeRect.left,
+              top: marqueeRect.top,
+              width: marqueeRect.width,
+              height: marqueeRect.height,
             }}
           />
         ) : null}
