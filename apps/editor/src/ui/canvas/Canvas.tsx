@@ -959,6 +959,18 @@ export function Canvas() {
           state.selectAll();
           return;
         }
+        const targetId = state.selection[0];
+        if (event.key.toLowerCase() === "l" && targetId) {
+          // Framer advertises Ctrl/Cmd+L for Lock in its context menu.
+          event.preventDefault();
+          state.toggleLock(targetId);
+          return;
+        }
+        if (event.key === ";" && targetId) {
+          event.preventDefault();
+          state.toggleVisibility(targetId);
+          return;
+        }
       }
 
       if (

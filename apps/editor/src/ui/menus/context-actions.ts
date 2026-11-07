@@ -387,27 +387,11 @@ export function autoRenameNode(nodeId: NodeId): void {
 }
 
 export function toggleNodeLock(nodeId: NodeId): void {
-  const context = currentContext();
-  if (!context) return;
-  const ids = actionTargetIds(context, nodeId);
-  useProjectStore.getState().applyRecipe("Lock layer", (draft) => {
-    for (const id of ids) {
-      const node = findNode(context.scene.root, id);
-      if (node) setNodeLocked(draft, { ...context.scene.target, nodeId: id }, !node.locked);
-    }
-  });
+  useProjectStore.getState().toggleLock(nodeId);
 }
 
 export function toggleNodeVisibility(nodeId: NodeId): void {
-  const context = currentContext();
-  if (!context) return;
-  const ids = actionTargetIds(context, nodeId);
-  useProjectStore.getState().applyRecipe("Hide layer", (draft) => {
-    for (const id of ids) {
-      const node = findNode(context.scene.root, id);
-      if (node) setNodeVisible(draft, { ...context.scene.target, nodeId: id }, !node.visible);
-    }
-  });
+  useProjectStore.getState().toggleVisibility(nodeId);
 }
 
 export function setNodeOverflow(nodeId: NodeId, overflow: Overflow): void {

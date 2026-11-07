@@ -384,6 +384,26 @@ describe("project store", () => {
     expect(pastedFrame.children.map((child) => child.id)).toEqual(second);
   });
 
+  it("toggles lock and visibility for the selected layer", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    store.getState().toggleLock(childId);
+    expect(frameAt(store.getState().project, childId).locked).toBe(true);
+
+    store.getState().toggleLock(childId);
+    expect(frameAt(store.getState().project, childId).locked).toBe(false);
+
+    store.getState().toggleVisibility(childId);
+    expect(frameAt(store.getState().project, childId).visible).toBe(false);
+
+    store.getState().toggleVisibility(childId);
+    expect(frameAt(store.getState().project, childId).visible).toBe(true);
+  });
+
   it("writes box updates into the active breakpoint override", async () => {
     const { project, childId } = fixture();
     const { api } = makeApi(project);

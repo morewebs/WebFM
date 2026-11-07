@@ -63,6 +63,8 @@ import {
   type SceneTarget,
   type StyleProps,
   setInstanceVariant as setInstanceVariantOperation,
+  setNodeLocked,
+  setNodeVisible,
   type TextNode,
   type TextProps,
   type TextStyle,
@@ -165,6 +167,10 @@ export interface ProjectStoreState {
   hasClipboardNodes(): boolean;
   /** Pastes the snapshot with fresh ids; returns the new node ids. */
   pasteClipboard(): NodeId[];
+  /** Toggles lock on a layer, or on the whole selection when it is selected. */
+  toggleLock(nodeId: NodeId): void;
+  /** Toggles visibility on a layer, or on the whole selection when selected. */
+  toggleVisibility(nodeId: NodeId): void;
   setHovered(nodeId: NodeId | null): void;
   setZoom(zoom: number): void;
   setPan(pan: Pan): void;
@@ -867,6 +873,36 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
           selection: scene.root.children
             .filter((child) => child.visible && !child.locked)
             .map((child) => child.id),
+        });
+      },
+
+      toggleLock(nodeId) {
+        const scene = currentScene();
+        if (!scene) return;
+        const topLevel = topLevelSelection(scene.root, get().selection);
+        const ids = topLevel.includes(nodeId) ? topLevel : [nodeId];
+        applyRecipe("Lock layer", (draft) => {
+          for (const id of ids) {
+            const node = findNode(scene.root, id);
+            if (node) {
+              setNodeLocked(draft, withTarget(scene.target, { nodeId: id }), !node.locked);
+            }
+          }
+        });
+      },
+
+      toggleVisibility(nodeId) {
+        const scene = currentScene();
+        if (!scene) return;
+        const topLevel = topLevelSelection(scene.root, get().selection);
+        const ids = topLevel.includes(nodeId) ? topLevel : [nodeId];
+        applyRecipe("Hide layer", (draft) => {
+          for (const id of ids) {
+            const node = findNode(scene.root, id);
+            if (node) {
+              setNodeVisible(draft, withTarget(scene.target, { nodeId: id }), !node.visible);
+            }
+          }
         });
       },
 
