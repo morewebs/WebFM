@@ -173,7 +173,7 @@ export interface LayoutProps {
   grid: GridLayout;
 }
 
-export type SizeMode = "fixed" | "fill" | "hug" | "relative";
+export type SizeMode = "fixed" | "fill" | "hug" | "relative" | "viewport";
 
 export interface SizeValue {
   mode: SizeMode;
@@ -184,22 +184,29 @@ export interface SizeValue {
 export interface SizeProps {
   width: SizeValue;
   height: SizeValue;
-  minWidth?: number;
-  maxWidth?: number;
-  minHeight?: number;
-  maxHeight?: number;
+  minWidth?: number | null;
+  maxWidth?: number | null;
+  minHeight?: number | null;
+  maxHeight?: number | null;
   aspectRatio?: number | null;
 }
+
+export type PositionMode = "relative" | "absolute" | "fixed" | "sticky";
 
 export interface PositionProps {
   x: number;
   y: number;
   zIndex?: number;
+  /**
+   * How the node participates in its parent's layout. Optional so projects
+   * authored before positioning modes existed keep their current behavior.
+   */
+  mode?: PositionMode;
 }
 
 export type ImageFit = "fill" | "fit" | "crop";
 export type BorderStyle = "solid" | "dashed" | "dotted";
-export type Overflow = "visible" | "hidden" | "clip";
+export type Overflow = "visible" | "hidden" | "clip" | "scroll" | "auto";
 export type TextAlign = "left" | "center" | "right" | "justify";
 export type VerticalAlign = "top" | "center" | "bottom";
 export type TextTransform = "none" | "uppercase" | "lowercase" | "capitalize";
@@ -254,6 +261,9 @@ export interface StyleProps {
   shadows: Shadow[];
   opacity: number;
   overflow: Overflow;
+  /** Per-axis overrides; null or absent falls back to `overflow`. */
+  overflowX?: Overflow | null;
+  overflowY?: Overflow | null;
   blendMode: string;
   /** Degrees. */
   rotate: number;

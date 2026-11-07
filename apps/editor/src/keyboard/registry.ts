@@ -18,6 +18,8 @@ export type ShortcutId =
   | "tool-stack"
   | "tool-text"
   | "tool-oval"
+  | "tool-rectangle"
+  | "tool-rounded"
   | "show-pages"
   | "show-layers"
   | "show-assets"
@@ -61,7 +63,15 @@ export interface KeyboardEventTarget {
   removeEventListener(type: string, listener: (event: KeyboardEventLike) => void): void;
 }
 
-export type ToolName = "select" | "frame" | "stack" | "text" | "image" | "oval";
+export type ToolName =
+  | "select"
+  | "frame"
+  | "stack"
+  | "text"
+  | "image"
+  | "oval"
+  | "rectangle"
+  | "rounded";
 export type LeftPanelName = "pages" | "layers" | "assets";
 
 export interface ShortcutActions {
@@ -109,6 +119,8 @@ export const SHORTCUT_DEFINITIONS: ReadonlyArray<Pick<ShortcutBinding, "id" | "k
   { id: "tool-stack", keys: "S", label: "Stack tool" },
   { id: "tool-text", keys: "T", label: "Text tool" },
   { id: "tool-oval", keys: "O", label: "Oval tool" },
+  { id: "tool-rectangle", keys: "R", label: "Rectangle tool" },
+  { id: "tool-rounded", keys: "U", label: "Rounded tool" },
   { id: "show-pages", keys: "Alt+Shift+1", label: "Show Pages" },
   { id: "show-layers", keys: "Alt+Shift+2", label: "Show Layers" },
   { id: "show-assets", keys: "Alt+Shift+3", label: "Show Assets" },
@@ -344,6 +356,20 @@ export function createShortcutBindings(actions: ShortcutActions): ShortcutBindin
       label: "Oval tool",
       match: (event) => hasNoModifiers(event) && key(event) === "o",
       run: () => actions.setTool?.("oval"),
+    },
+    {
+      id: "tool-rectangle",
+      keys: "R",
+      label: "Rectangle tool",
+      match: (event) => hasNoModifiers(event) && key(event) === "r",
+      run: () => actions.setTool?.("rectangle"),
+    },
+    {
+      id: "tool-rounded",
+      keys: "U",
+      label: "Rounded tool",
+      match: (event) => hasNoModifiers(event) && key(event) === "u",
+      run: () => actions.setTool?.("rounded"),
     },
     {
       id: "align-left",

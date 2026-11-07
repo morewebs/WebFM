@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 08:06
+**Updated:** 2026-11-07 08:12
 
 ## Current milestone
 
@@ -24,6 +24,8 @@ including component property controls. Interactions are the next slice.
 | Panels | done | Layers (component breadcrumb, instance purple accent, Create/Edit component), Pages, Assets (Components section), Properties (instance inspector), Insert, menus, Publish dialog, Preview. |
 | Breakpoints | done | 1200/810/390 defaults, per-breakpoint overrides, custom add (narrower than primary) and remove; verified. |
 | Components | done (core+controls) | Create from layer, instances, edit master, variants, property controls with defaults/bindings, publish. Instance style overrides next. |
+| Layout modes | done | Relative/Absolute/Fixed/Sticky, overflow X/Y/scroll, viewport sizing, min/max with clear; verified. |
+| Shape tools | partial | Rectangle (R), Rounded (U), Oval (O); polygon/star missing. |
 | Grouping | done | Group/ungroup, Add frame/Add stack, Remove wrapper; one history entry; verified. |
 | Fill editor | done | Solid, linear/radial gradients (stops/angle), image fills (asset select/upload, fit, focus); verified. |
 | Context menus | done | Framer-style node/layer and empty-canvas menus with search, submenus and working actions; verified. |
@@ -50,6 +52,11 @@ including component property controls. Interactions are the next slice.
   selects the instance; Add variant; instance variant switch changes rendered
   content; second instance inserted from Assets; publish renders both instances
   with their variant content.
+- Layout modes: set Fixed positioning, overflow X scroll, width 100vw and a
+  120px min width, then cleared it; published CSS showed position fixed,
+  overflow-x scroll and width 100vw.
+- Shape tools: R drew a 150x100 rectangle (#e5e5e5), U drew a rounded frame with
+  a 20px radius.
 - Grouping: Shift+F wrapped two selected instances into one frame without moving
   them; Ctrl+Delete unwrapped it and kept the screen positions.
 - Fill editor: switched a text layer to a linear gradient and saw the
@@ -79,8 +86,8 @@ including component property controls. Interactions are the next slice.
 ## Next
 
 1. Code components, then CMS.
-2. Positioning modes, overflow X/Y/scroll, min/max fields, viewport sizing.
-3. Fonts picker/text styles, shape tools, color styles; instance style overrides; per-variant property defaults; publish class scoping.
+2. Fonts picker and text styles; color styles; polygon/star tools; guides/snapping.
+3. Instance style overrides; per-variant property defaults; publish class scoping; more interactions.
 4. More interaction triggers (scroll, drag) and effect types; multiple effects
    per trigger.
 5. Cloud/auth design discussion (deferred).

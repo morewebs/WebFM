@@ -14,6 +14,7 @@ unless the live editor shows otherwise.
 | Stack tool | `S` | `S` |
 | Text tool | `T` | `T` |
 | Rectangle | `R` | `R` |
+| Rounded | `U` | `U` |
 | Oval | `O` | `O` |
 | Image | `Shift+I` | `Shift+I` |
 | Rows / Columns / Grid | `Shift+R` / `Shift+C` / `Shift+G` | same |

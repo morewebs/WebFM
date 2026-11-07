@@ -1,16 +1,88 @@
 import type { ProjectSummary } from "@webfm/model";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../../state/project-store";
 import { Icon } from "../icons";
 import { LayoutToolsMenu } from "../menus/LayoutToolsMenu";
 import { MainMenu } from "../menus/MainMenu";
 import { ProjectMenu } from "../menus/ProjectMenu";
-import { useUIStore } from "../ui-store";
+import { type EditorTool, useUIStore } from "../ui-store";
 
 interface TopBarProps {
   projects: ProjectSummary[];
   onOpenProject(id: string): void;
   onNewProject(): void;
+}
+
+const SHAPE_TOOLS = [
+  { tool: "rectangle", label: "Rectangle", shortcut: "R", icon: "frame" },
+  { tool: "rounded", label: "Rounded", shortcut: "U", icon: "frame" },
+  { tool: "oval", label: "Oval", shortcut: "O", icon: "oval" },
+] as const;
+
+function isShapeTool(tool: EditorTool): boolean {
+  return tool === "rectangle" || tool === "rounded" || tool === "oval";
+}
+
+interface ShapeToolsMenuProps {
+  onClose(): void;
+}
+
+/** Shape picker flyout, rendered inside the tool button's wrapper. */
+function ShapeToolsMenu({ onClose }: ShapeToolsMenuProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const tool = useUIStore((state) => state.tool);
+  const setTool = useUIStore((state) => state.setTool);
+
+  useEffect(() => {
+    const handlePointer = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const node = rootRef.current;
+      if (!node) return;
+      if (node.contains(target)) return;
+      // The trigger button lives in the menu's wrapper; let it toggle the menu.
+      if (node.parentElement?.contains(target)) return;
+      onClose();
+    };
+    const handleKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("pointerdown", handlePointer, true);
+    document.addEventListener("keydown", handleKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointer, true);
+      document.removeEventListener("keydown", handleKey, true);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="wfm-menu"
+      style={{ top: 34, left: -8, width: 176, minWidth: 176 }}
+      role="menu"
+      aria-label="Shapes"
+    >
+      {SHAPE_TOOLS.map((item) => (
+        <button
+          key={item.tool}
+          type="button"
+          className={`wfm-menu__item ${tool === item.tool ? "is-active" : ""}`}
+          role="menuitem"
+          onClick={() => {
+            setTool(item.tool);
+            onClose();
+          }}
+        >
+          <Icon name={item.icon} size={14} />
+          <span>{item.label}</span>
+          <span className="wfm-menu__shortcut">{item.shortcut}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function TopBar({ projects, onOpenProject, onNewProject }: TopBarProps) {
@@ -29,6 +101,7 @@ export function TopBar({ projects, onOpenProject, onNewProject }: TopBarProps) {
   const setPreviewOpen = useUIStore((state) => state.setPreviewOpen);
 
   const [layoutAnchor, setLayoutAnchor] = useState<"frame">("frame");
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
 
   return (
     <header className="wfm-topbar">
@@ -77,14 +150,17 @@ export function TopBar({ projects, onOpenProject, onNewProject }: TopBarProps) {
             ) : null}
           </div>
 
-          <button
-            type="button"
-            className={`wfm-tool ${tool === "oval" ? "is-active" : ""}`}
-            title="Oval (O)"
-            onClick={() => setTool(tool === "oval" ? "select" : "oval")}
-          >
-            <Icon name="oval" size={14} />
-          </button>
+          <div className="wfm-tool-wrap">
+            <button
+              type="button"
+              className={`wfm-tool ${isShapeTool(tool) ? "is-active" : ""}`}
+              title="Shape (R)"
+              onClick={() => setShapeMenuOpen(!shapeMenuOpen)}
+            >
+              <Icon name="oval" size={14} />
+            </button>
+            {shapeMenuOpen ? <ShapeToolsMenu onClose={() => setShapeMenuOpen(false)} /> : null}
+          </div>
 
           <button
             type="button"

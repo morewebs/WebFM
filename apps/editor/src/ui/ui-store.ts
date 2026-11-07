@@ -1,7 +1,16 @@
 import type { NodeId } from "@webfm/model";
 import { create } from "zustand";
 
-export type EditorTool = "select" | "hand" | "frame" | "stack" | "text" | "image" | "oval";
+export type EditorTool =
+  | "select"
+  | "hand"
+  | "frame"
+  | "stack"
+  | "text"
+  | "image"
+  | "oval"
+  | "rectangle"
+  | "rounded";
 export type LeftTab = "pages" | "layers" | "assets";
 export type RightTab = "agent" | "style";
 

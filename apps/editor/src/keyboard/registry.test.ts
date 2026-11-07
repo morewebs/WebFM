@@ -41,7 +41,7 @@ describe("shortcut registry", () => {
     expect(bindings.map((binding) => binding.id).sort()).toEqual(
       SHORTCUT_DEFINITIONS.map((definition) => definition.id).sort(),
     );
-    expect(SHORTCUT_DEFINITIONS).toHaveLength(33);
+    expect(SHORTCUT_DEFINITIONS).toHaveLength(35);
   });
 
   it("maps the alignment shortcuts", () => {
@@ -62,7 +62,15 @@ describe("shortcut registry", () => {
     expect(bindingFor(bindings, "tool-stack").match(keyEvent({ key: "s" }))).toBe(true);
     expect(bindingFor(bindings, "tool-text").match(keyEvent({ key: "t" }))).toBe(true);
     expect(bindingFor(bindings, "tool-oval").match(keyEvent({ key: "o" }))).toBe(true);
+    expect(bindingFor(bindings, "tool-rectangle").match(keyEvent({ key: "r" }))).toBe(true);
+    expect(bindingFor(bindings, "tool-rounded").match(keyEvent({ key: "u" }))).toBe(true);
     expect(bindingFor(bindings, "tool-frame").match(keyEvent({ key: "f", metaKey: true }))).toBe(
+      false,
+    );
+    expect(bindingFor(bindings, "tool-rectangle").match(keyEvent({ key: "r", ctrlKey: true }))).toBe(
+      false,
+    );
+    expect(bindingFor(bindings, "tool-rounded").match(keyEvent({ key: "u", altKey: true }))).toBe(
       false,
     );
     expect(bindingFor(bindings, "show-style").match(keyEvent({ key: "e" }))).toBe(true);
@@ -71,6 +79,17 @@ describe("shortcut registry", () => {
         keyEvent({ key: "1", altKey: true, shiftKey: true }),
       ),
     ).toBe(true);
+  });
+
+  it("runs the shape tool actions", () => {
+    const setTool = vi.fn();
+    const bindings = createShortcutBindings({ ...actions(), setTool });
+    bindingFor(bindings, "tool-rectangle").run();
+    bindingFor(bindings, "tool-rounded").run();
+    bindingFor(bindings, "tool-oval").run();
+    expect(setTool).toHaveBeenNthCalledWith(1, "rectangle");
+    expect(setTool).toHaveBeenNthCalledWith(2, "rounded");
+    expect(setTool).toHaveBeenNthCalledWith(3, "oval");
   });
 
   it("maps Mod+Z to undo and Shift+Mod+Z to redo", () => {
