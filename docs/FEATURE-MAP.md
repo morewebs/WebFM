@@ -11,17 +11,16 @@ outside this project's scope.
 - **Done:** editor shell, pages, Frame/Stack/Text/Image, canvas select/move/
   resize, text editing, layers, grouping/wrapping, core Style panel with
   solid/gradient/image fills, positioning modes, overflow X/Y/scroll,
-  viewport sizing, min/max fields, rectangle/rounded/oval tools, responsive
-  breakpoints,
+  viewport sizing, min/max fields, rectangle/rounded/oval tools, Google Fonts
+  picker, rulers, guides and smart-guide snapping, responsive breakpoints,
   components/instances/variants/property controls, Appear/Hover/Tap effects,
   alignment, context menus, preview, static publish.
 - **Partial:** Pages, Layers, Assets, Style, Components, Interactions, menus,
   shortcuts, publishing.
-- **Missing (editor-level):** grouping/wrapping, fill gradients/image fills,
-  color/text styles, fonts picker, shape/vector tools, positioning modes,
-  overflow X/Y/scroll, visual effects, code components, CMS, localization,
-  analytics, settings, code overrides, comments/collaboration, branching,
-  Figma import, versioned publishing.
+- **Missing (editor-level):** color/text styles, polygon/star/pen and vector
+  editing, grid overlay, marquee selection, visual effects, code components,
+  CMS, localization, analytics, settings, code overrides, comments/
+  collaboration, branching, Figma import, versioned publishing.
 - **Reserved:** the Agent panel and all AI actions.
 - **Out:** hosting, accounts/cloud deployment (deferred), and Framer's cloud
   marketplace/community.
@@ -69,7 +68,8 @@ outside this project's scope.
 | Shape tools: rectangle, rounded, polygon, star | Partial | Rectangle (R), Rounded (U) and Oval (O) work; polygon/star/pen missing. |
 | Pen/path/vector editing | Missing | |
 | Rotation, scale tool, link tool, sample color | Missing | |
-| Smart guides/snapping/rulers/grid | Missing | |
+| Rulers, guides and smart-guide snapping | Done | Drag from a ruler to create, drag a guide to move, drag it off the page to delete; nodes snap to parent/sibling/page/guide edges and centers (4px screen threshold, Alt bypasses). Verified. |
+| Grid overlay | Missing | |
 | Marquee/lasso selection | Missing | Additive click selection only. |
 | Multi-selection transform | Partial | Movement/resize per node; no group bounding transform. |
 | Component edit mode | Done | Basic bar, variant switching, back to page. |
@@ -157,10 +157,10 @@ outside this project's scope.
 1. ~~Grouping/wrapping/unwrapping~~ — done and verified.
 2. ~~Fill gradients and image fills in the Style panel~~ — done and verified.
 3. ~~Positioning modes and overflow X/Y/Scroll, viewport sizing, min/max~~ — done and verified.
-4. Google Fonts/custom font picker and text styles.
+4. ~~Google Fonts/custom font picker~~ — done; custom font upload and text styles remain.
 5. Shape tools: rectangle and rounded done; polygon/star still missing.
 6. Color styles and text styles in Assets.
-7. Rulers/guides/smart guides and snapping.
+7. ~~Rulers/guides/smart guides and snapping~~ — done and verified.
 
 ## P1 gaps
 

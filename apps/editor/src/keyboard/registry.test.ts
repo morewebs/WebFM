@@ -41,7 +41,7 @@ describe("shortcut registry", () => {
     expect(bindings.map((binding) => binding.id).sort()).toEqual(
       SHORTCUT_DEFINITIONS.map((definition) => definition.id).sort(),
     );
-    expect(SHORTCUT_DEFINITIONS).toHaveLength(35);
+    expect(SHORTCUT_DEFINITIONS).toHaveLength(37);
   });
 
   it("maps the alignment shortcuts", () => {
@@ -195,6 +195,35 @@ describe("shortcut registry", () => {
     expect(spies.wrapFrame).toHaveBeenCalledTimes(1);
     expect(spies.wrapStack).toHaveBeenCalledTimes(1);
     expect(spies.unwrap).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps Ctrl+R to rulers and Alt+G to guides without shadowing Group", () => {
+    const bindings = createShortcutBindings(actions());
+    const rulers = bindingFor(bindings, "toggle-rulers");
+    const guides = bindingFor(bindings, "toggle-guides");
+    const group = bindingFor(bindings, "group");
+
+    expect(rulers.match(keyEvent({ key: "r", ctrlKey: true }))).toBe(true);
+    expect(rulers.match(keyEvent({ key: "R", metaKey: true }))).toBe(true);
+    expect(rulers.match(keyEvent({ key: "r", ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(rulers.match(keyEvent({ key: "r", ctrlKey: true, altKey: true }))).toBe(false);
+
+    expect(guides.match(keyEvent({ key: "g", altKey: true }))).toBe(true);
+    expect(guides.match(keyEvent({ key: "g", altKey: true, ctrlKey: true }))).toBe(false);
+    expect(guides.match(keyEvent({ key: "g" }))).toBe(false);
+
+    // Ctrl+G stays Group; Show Guides is Alt+G on Windows per the shortcuts doc.
+    expect(group.match(keyEvent({ key: "g", ctrlKey: true }))).toBe(true);
+    expect(guides.match(keyEvent({ key: "g", ctrlKey: true }))).toBe(false);
+  });
+
+  it("runs the rulers and guides toggles", () => {
+    const spies = { ...actions(), toggleRulers: vi.fn(), toggleGuides: vi.fn() };
+    const bindings = createShortcutBindings(spies);
+    bindingFor(bindings, "toggle-rulers").run();
+    bindingFor(bindings, "toggle-guides").run();
+    expect(spies.toggleRulers).toHaveBeenCalledTimes(1);
+    expect(spies.toggleGuides).toHaveBeenCalledTimes(1);
   });
 
   it("runs the action for a matching event", () => {

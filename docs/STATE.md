@@ -2,12 +2,13 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 08:12
+**Updated:** 2026-11-07 08:50
 
 ## Current milestone
 
-The core editor and the component slice are built and browser-verified,
-including component property controls. Interactions are the next slice.
+The core editor, component slice, interactions and the P0 backlog slices are
+built and browser-verified. Working through the remaining backlog: text/color
+styles, polygon/star, richer interactions, then code components and CMS.
 
 ## Areas
 
@@ -30,6 +31,8 @@ including component property controls. Interactions are the next slice.
 | Fill editor | done | Solid, linear/radial gradients (stops/angle), image fills (asset select/upload, fit, focus); verified. |
 | Context menus | done | Framer-style node/layer and empty-canvas menus with search, submenus and working actions; verified. |
 | Alignment | done | 8 align/distribute actions for free-layout siblings; buttons + Alt shortcuts; verified. Text layers auto-rename on content edit. |
+| Rulers and guides | done | Ctrl+R rulers, Alt+G guides, drag from a ruler to create, drag to move, drag off the page to delete; page-owned guides persist. Verified. |
+| Smart-guide snapping | done | Parent/sibling/page/guide edges and centers, 4px screen threshold, snap lines, Alt bypasses; rects measured synchronously at pointer-down. Verified. |
 | Interactions | done | Appear/Hover/Tap with fade/slide/scale, duration, delay and easing; Preview and publish CSS; verified. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
 | Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
@@ -78,15 +81,25 @@ including component property controls. Interactions are the next slice.
   returned to the default; Set default variant moved the DEFAULT badge; publish
   contained the overridden and default instance content.
 
+- Rulers/guides: Ctrl+R toggled the 20px rulers; Alt+G hid/showed guides;
+  dragged a vertical guide from the top ruler (x=200) and a horizontal guide
+  from the left ruler (y=150); moved a guide 200→300 and dragged another off
+  the page to delete it; all changes persisted through autosave.
+- Snapping: dropping a frame 2px from a vertical guide snapped its left edge
+  exactly to 300 with a snap line; dropping it 2px from a horizontal guide
+  snapped its top to 150; holding Alt while dragging left it unsnapped at 312
+  with no snap line.
+
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
   overrides, breakpoint bar always blue, 1px shell offsets, variant node ids
-  (now shared across variants).
+  (now shared across variants), snapping using rects cached by the last
+  animation frame (now measured synchronously at pointer-down).
 
 ## Next
 
 1. Code components, then CMS.
-2. Fonts picker and text styles; color styles; polygon/star tools; guides/snapping.
+2. Text styles and color styles; polygon/star tools.
 3. Instance style overrides; per-variant property defaults; publish class scoping; more interactions.
 4. More interaction triggers (scroll, drag) and effect types; multiple effects
    per trigger.

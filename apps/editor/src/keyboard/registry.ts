@@ -24,6 +24,8 @@ export type ShortcutId =
   | "show-layers"
   | "show-assets"
   | "show-style"
+  | "toggle-rulers"
+  | "toggle-guides"
   | "preview"
   | "publish"
   | "zoom-100"
@@ -84,6 +86,8 @@ export interface ShortcutActions {
   setTool?(tool: ToolName): void;
   setLeftTab?(tab: LeftPanelName): void;
   showStyle?(): void;
+  toggleRulers?(): void;
+  toggleGuides?(): void;
   openPreview?(): void;
   openPublish?(): void;
   setZoom?(zoom: number): void;
@@ -125,6 +129,8 @@ export const SHORTCUT_DEFINITIONS: ReadonlyArray<Pick<ShortcutBinding, "id" | "k
   { id: "show-layers", keys: "Alt+Shift+2", label: "Show Layers" },
   { id: "show-assets", keys: "Alt+Shift+3", label: "Show Assets" },
   { id: "show-style", keys: "E", label: "Show Style panel" },
+  { id: "toggle-rulers", keys: "Ctrl+R", label: "Show Rulers" },
+  { id: "toggle-guides", keys: "Alt+G", label: "Show Guides" },
   { id: "preview", keys: "Mod+P", label: "Open Preview" },
   { id: "publish", keys: "Mod+Shift+P", label: "Publish Site" },
   { id: "zoom-100", keys: "Mod+0", label: "Zoom to 100%" },
@@ -314,6 +320,24 @@ export function createShortcutBindings(actions: ShortcutActions): ShortcutBindin
       label: "Show Style panel",
       match: (event) => hasNoModifiers(event) && key(event) === "e",
       run: () => actions.showStyle?.(),
+    },
+    {
+      id: "toggle-rulers",
+      keys: "Ctrl+R",
+      label: "Show Rulers",
+      match: (event) =>
+        hasPrimary(event) && !event.shiftKey && !event.altKey && key(event) === "r",
+      run: () => actions.toggleRulers?.(),
+    },
+    {
+      // Framer's Windows Show Guides binding. Ctrl+G is already Group
+      // (docs/SHORTCUTS.md lists Alt+G for Windows).
+      id: "toggle-guides",
+      keys: "Alt+G",
+      label: "Show Guides",
+      match: (event) =>
+        event.altKey === true && !hasPrimary(event) && !event.shiftKey && key(event) === "g",
+      run: () => actions.toggleGuides?.(),
     },
     {
       id: "insert",

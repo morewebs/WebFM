@@ -91,6 +91,8 @@ export function App() {
         setTool: (tool) => useUIStore.getState().setTool(tool),
         setLeftTab: (tab) => useUIStore.getState().setLeftTab(tab),
         showStyle: () => useUIStore.getState().setRightTab("style"),
+        toggleRulers: () => useUIStore.getState().toggleRulers(),
+        toggleGuides: () => useUIStore.getState().toggleGuides(),
         openPreview: () => useUIStore.getState().setPreviewOpen(true),
         openPublish: () => useUIStore.getState().setPublishOpen(true),
         createComponent: () => useProjectStore.getState().createComponentFromSelection(),

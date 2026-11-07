@@ -7,54 +7,58 @@
  * 600 ms debounce; conflicts are surfaced instead of overwriting the server.
  */
 
+import type { Asset } from "@webfm/model";
 import {
   addBreakpoint as addBreakpointOperation,
   addComponentVariant as addComponentVariantOperation,
+  addGuide as addGuideOperation,
   applyOperation,
-  canRedo,
-  canUndo,
-  createComponentFromNode,
-  createHistory,
-  duplicateNode,
-  findNode,
-  findParent,
-  getPage,
-  insertComponentInstance as insertComponentInstanceOperation,
-  insertNode as insertNodeOperation,
-  isSelfOrDescendant,
-  removeBreakpoint as removeBreakpointOperation,
-  renameComponent as renameComponentOperation,
-  renameComponentVariant as renameComponentVariantOperation,
-  renameNode,
-  resolveNodeProps,
-  setInstanceVariant as setInstanceVariantOperation,
   type BoxProps,
   type Breakpoint,
   type BreakpointId,
   type ComponentDefinition,
   type ComponentId,
   type ComponentVariant,
+  canRedo,
+  canUndo,
+  createComponentFromNode,
+  createHistory,
   type DeepPartial,
+  duplicateNode,
+  findNode,
+  findParent,
+  type Guide,
+  getPage,
   type HistoryState,
   type ImageProps,
+  insertComponentInstance as insertComponentInstanceOperation,
+  insertNode as insertNodeOperation,
+  isSelfOrDescendant,
   type NodeId,
   type Page,
   type PageId,
   type Project,
+  redo as redoHistory,
+  removeBreakpoint as removeBreakpointOperation,
+  removeGuide as removeGuideOperation,
+  removeNode,
+  renameComponent as renameComponentOperation,
+  renameComponentVariant as renameComponentVariantOperation,
+  renameNode,
+  resolveNodeProps,
   type SceneNode,
   type SceneTarget,
+  setInstanceVariant as setInstanceVariantOperation,
   type TextProps,
-  type VariantId,
-  redo as redoHistory,
-  removeNode,
   undo as undoHistory,
+  unwrapNode,
   updateBoxProps,
+  updateGuide as updateGuideOperation,
   updateImageProps,
   updateTextProps,
-  unwrapNode,
+  type VariantId,
   wrapNodes,
 } from "@webfm/model";
-import type { Asset } from "@webfm/model";
 import type { Draft } from "immer";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import {
@@ -124,6 +128,13 @@ export interface ProjectStoreState {
   setActiveBreakpoint(breakpointId: BreakpointId): void;
   addBreakpoint(name: string, width: number): BreakpointId | null;
   removeBreakpoint(breakpointId: BreakpointId): void;
+  /**
+   * Adds a guide to the active page and returns its id. Guides are page-level
+   * editor metadata: even in component edit mode they write to the active page.
+   */
+  addGuide(axis: Guide["axis"], position: number): string | null;
+  updateGuide(guideId: string, position: number): void;
+  removeGuide(guideId: string): void;
   select(nodeId: NodeId, additive?: boolean): void;
   selectMany(nodeIds: NodeId[]): void;
   clearSelection(): void;
@@ -631,6 +642,31 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         if (!activeStillExists) {
           set({ activeBreakpointId: state.project.breakpoints[0]?.id ?? "" });
         }
+      },
+
+      addGuide(axis, position) {
+        const page = currentPage();
+        if (!page) return null;
+        const guideId = applyRecipeWithResult("Add guide", (draft) =>
+          addGuideOperation(draft, { pageId: page.id, axis, position }),
+        );
+        return guideId;
+      },
+
+      updateGuide(guideId, position) {
+        const page = currentPage();
+        if (!page) return;
+        applyRecipe("Update guide", (draft) => {
+          updateGuideOperation(draft, { pageId: page.id, guideId, position });
+        });
+      },
+
+      removeGuide(guideId) {
+        const page = currentPage();
+        if (!page) return;
+        applyRecipe("Remove guide", (draft) => {
+          removeGuideOperation(draft, { pageId: page.id, guideId });
+        });
       },
 
       select(nodeId, additive = false) {

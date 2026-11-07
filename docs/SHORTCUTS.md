@@ -51,8 +51,8 @@ unless the live editor shows otherwise.
 | Zoom to 100% | `Cmd+0` | `Ctrl+0` (published as Shift+0; suspect) |
 | Zoom to fit | `Cmd+1` | `Ctrl+1` (published as Shift+1; suspect) |
 | Zoom to selection | `Cmd+2` | `Ctrl+2` (published as Shift+2; suspect) |
-| Show rulers | `Ctrl+R` | `Ctrl+Shift+R` |
-| Show guides | `Ctrl+G` | `Alt+G` |
+| Show rulers | `Cmd+R` | `Ctrl+R` |
+| Show guides | `Alt+G` | `Alt+G` (Ctrl+G is Group on Windows) |
 | Open preview | `Cmd+P` | `Ctrl+P` |
 | Publish site | `Cmd+Shift+P` | `Ctrl+Shift+P` |
 | Bring to front / send to back | `]` / `[` | `]` / `[` |
