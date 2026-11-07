@@ -50,7 +50,7 @@ outside this project's scope.
 | Pages: page settings/templates/CMS pages/duplicate/delete | Missing | |
 | Layers: tree, expand, rename, hide/lock, drag, context menu | Done | |
 | Layers: grouping/ungrouping, wrap/unwrap frame or stack | Done | Group/ungroup, Add frame/Add stack, Remove wrapper; shortcuts and context menu verified. |
-| Layers: multi-select drag, range select | Partial | Shift-click selects a contiguous range and selection auto-expands/scrolls; drag is still single-row. |
+| Layers: multi-select drag, range select | Done | Shift-click selects a contiguous range, selection auto-expands/scrolls, and dragging any selected row moves the whole top-level selection in order. |
 | Layers: alphabetical sort | Done | Empty-canvas context menu. |
 | Assets: image upload/list/insert | Done | |
 | Assets: components | Done | Cards with variant/instance counts and edit. |

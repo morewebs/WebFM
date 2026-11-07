@@ -12,6 +12,7 @@
 import {
   findNode,
   findParent,
+  getTargetRoot,
   indexOfNode,
   isSelfOrDescendant,
   moveNode,
@@ -93,7 +94,7 @@ export function LayersPanel() {
   const [draggingId, setDraggingId] = useState<NodeId | null>(null);
   const [drop, setDrop] = useState<DropTarget | null>(null);
 
-  const draggedRef = useRef<NodeId | null>(null);
+  const draggedIdsRef = useRef<NodeId[]>([]);
   const cancelRenameRef = useRef<NodeId | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
   const rangeAnchorRef = useRef<NodeId | null>(null);
@@ -301,11 +302,12 @@ export function LayersPanel() {
     return ratio < 0.5 ? "before" : "after";
   };
 
-  const canDropOn = (node: SceneNode, draggedId: NodeId | null): draggedId is NodeId => {
-    if (!root || !draggedId) return false;
+  const canDropOn = (node: SceneNode, draggedIds: NodeId[]): boolean => {
+    if (!root || draggedIds.length === 0) return false;
     if (node.locked) return false;
-    if (node.id === draggedId) return false;
-    return !isSelfOrDescendant(root, draggedId, node.id);
+    return draggedIds.every(
+      (draggedId) => draggedId !== node.id && !isSelfOrDescendant(root, draggedId, node.id),
+    );
   };
 
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>, node: SceneNode): void => {
@@ -313,15 +315,31 @@ export function LayersPanel() {
       event.preventDefault();
       return;
     }
-    draggedRef.current = node.id;
+    // Dragging any selected row moves the whole top-level selection, as in
+    // Framer. Dragging an unselected row moves just that row.
+    const state = useProjectStore.getState();
+    const selected = state.selection.includes(node.id) ? state.selection : [node.id];
+    const moveIds = selected.filter((id) => {
+      if (id === scene.root.id) return false;
+      const candidate = findNode(scene.root, id);
+      if (!candidate || candidate.locked) return false;
+      return !selected.some(
+        (other) => other !== id && isSelfOrDescendant(scene.root, other, id),
+      );
+    });
+    if (moveIds.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    draggedIdsRef.current = moveIds;
     setDraggingId(node.id);
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", node.id);
+    event.dataTransfer.setData("text/plain", moveIds.join(","));
   };
 
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>, node: SceneNode): void => {
-    const draggedId = draggedRef.current;
-    if (!canDropOn(node, draggedId)) {
+    const draggedIds = draggedIdsRef.current;
+    if (!canDropOn(node, draggedIds)) {
       event.dataTransfer.dropEffect = "none";
       setDrop(null);
       return;
@@ -337,38 +355,48 @@ export function LayersPanel() {
   };
 
   const clearDrag = (): void => {
-    draggedRef.current = null;
+    draggedIdsRef.current = [];
     setDraggingId(null);
     setDrop(null);
   };
 
   const handleDrop = (event: ReactDragEvent<HTMLDivElement>, node: SceneNode): void => {
     event.preventDefault();
-    const draggedId = draggedRef.current;
+    const draggedIds = draggedIdsRef.current;
     const position = drop?.nodeId === node.id ? drop.position : resolveDropPosition(event, node);
     clearDrag();
-    if (!scene || !canDropOn(node, draggedId)) return;
+    if (!scene || !canDropOn(node, draggedIds)) return;
 
     let parentId: NodeId;
-    let index: number;
+    let anchorId: NodeId | null = null;
     if (position === "inside") {
       if (node.type !== "frame") return;
       parentId = node.id;
-      index = node.children.length;
     } else {
       const parent = findParent(scene.root, node.id);
       if (!parent) return;
       parentId = parent.id;
-      index = indexOfNode(parent, node.id) + (position === "after" ? 1 : 0);
-      const previousParent = findParent(scene.root, draggedId);
-      if (previousParent && previousParent.id === parent.id) {
-        const previousIndex = indexOfNode(previousParent, draggedId);
-        if (previousIndex < index) index -= 1;
-      }
+      anchorId = node.id;
     }
 
     applyRecipe("Move layer", (draft) => {
-      moveNode(draft, { ...scene.target, nodeId: draggedId, parentId, index });
+      const draftRoot = getTargetRoot(draft, scene.target);
+      for (const draggedId of draggedIds) {
+        const parentDraft = findNode(draftRoot, parentId);
+        if (!parentDraft || parentDraft.type !== "frame") return;
+        let index = parentDraft.children.length;
+        if (anchorId) {
+          const anchorIndex = indexOfNode(parentDraft, anchorId);
+          if (anchorIndex === -1) return;
+          index = anchorIndex + (position === "after" ? 1 : 0);
+          const previousParent = findParent(draftRoot, draggedId);
+          if (previousParent && previousParent.id === parentId) {
+            const previousIndex = indexOfNode(previousParent, draggedId);
+            if (previousIndex !== -1 && previousIndex < index) index -= 1;
+          }
+        }
+        moveNode(draft, { ...scene.target, nodeId: draggedId, parentId, index });
+      }
     });
   };
 
