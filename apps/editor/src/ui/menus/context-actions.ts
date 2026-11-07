@@ -10,7 +10,6 @@
 import {
   type BoxProps,
   collectNodes,
-  createId,
   type DeepPartial,
   type Fill,
   findNode,
@@ -37,7 +36,6 @@ import { useUIStore } from "../ui-store";
 /* --------------------------------------------------------------- clipboard */
 
 interface InternalClipboard {
-  nodes?: SceneNode[];
   style?: DeepPartial<BoxProps>;
   fill?: Fill | null;
   text?: string;
@@ -50,7 +48,7 @@ export function clearClipboard(): void {
 }
 
 export function clipboardHasNodes(): boolean {
-  return (clipboard.nodes?.length ?? 0) > 0;
+  return useProjectStore.getState().hasClipboardNodes();
 }
 
 export function clipboardHasStyle(): boolean {
@@ -59,20 +57,6 @@ export function clipboardHasStyle(): boolean {
 
 export function clipboardHasFill(): boolean {
   return "fill" in clipboard;
-}
-
-/** Copies JSON data and assigns a fresh id to the node and every descendant. */
-export function cloneNodeWithFreshIds(node: SceneNode): SceneNode {
-  const copy = structuredClone(node) as SceneNode;
-  assignFreshIds(copy);
-  return copy;
-}
-
-function assignFreshIds(node: SceneNode): void {
-  node.id = createId("node");
-  if (node.type === "frame") {
-    for (const child of node.children) assignFreshIds(child);
-  }
 }
 
 /** Highest selected nodes, so copying a parent and child does not duplicate twice. */
@@ -126,15 +110,8 @@ function writeClipboardText(value: string): void {
 /* ------------------------------------------------------------------ copy */
 
 export function copySelection(): void {
-  const context = currentContext();
-  if (!context) return;
-  const ids = topLevelNodeIds(context.scene.root, context.selection);
-  const nodes: SceneNode[] = [];
-  for (const id of ids) {
-    const node = findNode(context.scene.root, id);
-    if (node) nodes.push(structuredClone(node));
-  }
-  if (nodes.length > 0) clipboard.nodes = nodes;
+  // One clipboard for the whole editor: Cmd+C and the context menu share it.
+  useProjectStore.getState().copySelection();
 }
 
 /** The appearance a node actually renders, including instance overrides. */
@@ -184,27 +161,9 @@ export function copyNodeId(nodeId?: NodeId): void {
 
 /* ----------------------------------------------------------------- paste */
 
-function pasteParentId(root: SceneNode, selection: readonly NodeId[]): NodeId {
-  const first = selection[0];
-  if (!first) return root.id;
-  const node = findNode(root, first);
-  if (!node) return root.id;
-  if (node.type === "frame") return node.id;
-  return findParent(root, first)?.id ?? root.id;
-}
-
 export function pasteSelection(): void {
-  const context = currentContext();
-  if (!context || !clipboard.nodes || clipboard.nodes.length === 0) return;
-  const parentId = pasteParentId(context.scene.root, context.selection);
-  const clones = clipboard.nodes.map((node) => cloneNodeWithFreshIds(node));
-  const pastedIds = clones.map((node) => node.id);
-  useProjectStore.getState().applyRecipe("Paste", (draft) => {
-    for (const clone of clones) {
-      insertNode(draft, { ...context.scene.target, parentId, node: clone });
-    }
-  });
-  useProjectStore.getState().selectMany(pastedIds);
+  // The store picks the container and assigns fresh ids per paste.
+  useProjectStore.getState().pasteClipboard();
 }
 
 /** Paste in place currently behaves like paste; the position offset is not modelled. */

@@ -161,6 +161,8 @@ export interface ProjectStoreState {
   selectAll(): void;
   /** Snapshots the selection (top-level layers) for a later paste. */
   copySelection(): number;
+  /** True when the layer clipboard holds at least one node. */
+  hasClipboardNodes(): boolean;
   /** Pastes the snapshot with fresh ids; returns the new node ids. */
   pasteClipboard(): NodeId[];
   setHovered(nodeId: NodeId | null): void;
@@ -866,6 +868,10 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
             .filter((child) => child.visible && !child.locked)
             .map((child) => child.id),
         });
+      },
+
+      hasClipboardNodes() {
+        return (clipboardNodes?.length ?? 0) > 0;
       },
 
       copySelection() {

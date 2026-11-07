@@ -267,6 +267,16 @@ function caretOffsetAtPoint(element: HTMLElement, x: number, y: number): number 
   return preceding.toString().length;
 }
 
+/** Framer locks a layer together with everything nested inside it. */
+function isNodeLocked(root: SceneNode, nodeId: NodeId): boolean {
+  let node = findNode(root, nodeId);
+  while (node) {
+    if (node.locked) return true;
+    node = findParent(root, node.id);
+  }
+  return false;
+}
+
 /** The DOM rect of a node in viewport coordinates. */
 function measureNodeRect(
   _stage: HTMLElement,
@@ -448,7 +458,7 @@ function movableNodeIds(
   for (const nodeId of selection) {
     if (nodeId === root.id) continue;
     const node = findNode(root, nodeId);
-    if (!node || node.locked) continue;
+    if (!node || isNodeLocked(root, node.id)) continue;
     nodes.push(node);
   }
   const topLevel = nodes.filter(
@@ -951,6 +961,31 @@ export function Canvas() {
         }
       }
 
+      if (
+        event.key === "Enter" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.target === document.body
+      ) {
+        const state = useProjectStore.getState();
+        const currentProject = state.project;
+        const currentScene = activeSceneOf(
+          currentProject,
+          state.activePageId,
+          state.editingComponent,
+        );
+        const selectedId = state.selection.length === 1 ? state.selection[0] : undefined;
+        const node =
+          currentScene && selectedId ? findNode(currentScene.root, selectedId) : null;
+        if (currentScene && node?.type === "text" && !isNodeLocked(currentScene.root, node.id)) {
+          event.preventDefault();
+          beginTextEditing(node.id);
+        }
+        return;
+      }
+
       if (event.code === "Space" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         spaceRef.current = true;
         setSpaceDown(true);
@@ -1307,7 +1342,9 @@ export function Canvas() {
     const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
     const nodeId = nodeElement?.dataset.nodeId;
     const node = nodeId ? findNode(scene.root, nodeId) : null;
-    state.setHovered(node && node.id !== scene.root.id && !node.locked ? node.id : null);
+    state.setHovered(
+      node && node.id !== scene.root.id && !isNodeLocked(scene.root, node.id) ? node.id : null,
+    );
   };
 
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
@@ -1374,7 +1411,8 @@ export function Canvas() {
     if (isResizeHandle(handle) && currentTool === "select" && state.selection.length === 1) {
       const nodeId = state.selection[0];
       const node = nodeId ? findNode(currentScene.root, nodeId) : null;
-      if (!nodeId || !node || node.locked || node.id === currentScene.root.id) return;
+      if (!nodeId || !node || isNodeLocked(currentScene.root, node.id) || node.id === currentScene.root.id)
+        return;
       const element = findNodeElement(stage, nodeId);
       if (!element) return;
 
@@ -1469,7 +1507,7 @@ export function Canvas() {
 
     const nodeId = nodeElement.dataset.nodeId;
     const node = nodeId ? findNode(currentScene.root, nodeId) : null;
-    if (!nodeId || !node || node.locked) return;
+    if (!nodeId || !node || isNodeLocked(currentScene.root, nodeId)) return;
 
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
     const alreadySelected = state.selection.includes(nodeId);
@@ -1835,7 +1873,7 @@ export function Canvas() {
     const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
     if (!currentProject || !currentScene) return;
     const node = findNode(currentScene.root, nodeId);
-    if (node?.type !== "text" || node.locked) return;
+    if (node?.type !== "text" || isNodeLocked(currentScene.root, nodeId)) return;
     const props = resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints);
     const stage = stageRef.current;
     const viewport = viewportRef.current;
@@ -1866,7 +1904,7 @@ export function Canvas() {
     const nodeId = nodeElement?.dataset.nodeId;
     if (!nodeElement || !nodeId) return;
     const node = findNode(currentScene.root, nodeId);
-    if (!node || node.locked) return;
+    if (!node || isNodeLocked(currentScene.root, nodeId)) return;
     if (node.type === "componentInstance") {
       event.preventDefault();
       state.enterComponent(node.componentId, node.variantId ?? undefined, node.id);
@@ -1906,14 +1944,14 @@ export function Canvas() {
   const showHandles =
     singleSelectedNode !== null &&
     singleSelectedNode.id !== scene.root.id &&
-    !singleSelectedNode.locked;
+    !isNodeLocked(scene.root, singleSelectedNode.id);
 
   const hoveredNode = hoveredNodeId ? findNode(scene.root, hoveredNodeId) : null;
   const hoverRect =
     hoveredNode &&
     hoveredNode.id !== scene.root.id &&
     hoveredNode.id !== editing?.nodeId &&
-    !hoveredNode.locked &&
+    !isNodeLocked(scene.root, hoveredNode.id) &&
     !selection.includes(hoveredNode.id)
       ? (rects.get(hoveredNode.id) ?? null)
       : null;

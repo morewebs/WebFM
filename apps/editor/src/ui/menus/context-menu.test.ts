@@ -1,4 +1,5 @@
 import {
+  cloneNodesForPaste,
   createFrame,
   createImage,
   createProject,
@@ -11,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import { activeSceneOf } from "../../state/project-store";
 import {
   automaticName,
-  cloneNodeWithFreshIds,
   filterMenuEntries,
   type MenuEntry,
   menuItem,
@@ -42,7 +42,7 @@ describe("context menu helpers", () => {
       ],
     });
 
-    const clone = cloneNodeWithFreshIds(frame);
+    const clone = cloneNodesForPaste([frame])[0]!;
     const originalIds = idsOf(frame);
     const cloneIds = idsOf(clone);
 
