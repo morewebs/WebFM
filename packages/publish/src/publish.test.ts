@@ -2,6 +2,7 @@ import type { Asset, Page, Project, SceneNode } from "@webfm/model";
 import { createFrame, createImage, createPage, createProject, createText } from "@webfm/model";
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
+import { renderPageDocument } from "./document";
 import { getAdapter, listAdapters, publishWithAdapter, staticAdapter, zipFiles } from "./index";
 import type { AssetResolver, PublishInput } from "./types";
 
@@ -154,6 +155,83 @@ describe("static adapter documents", () => {
 
     expect(html).toContain("<title>A &lt;Home&gt; — Acme &amp; Co</title>");
     expect(html).not.toContain("<title>A <Home>");
+  });
+});
+
+describe("static adapter fonts", () => {
+  it("renders each Google Fonts link before the shared stylesheet", () => {
+    const html = renderPageDocument({
+      title: "Home",
+      stylesheetHref: "../styles.css",
+      fontLinks: [
+        "https://fonts.googleapis.com/css2?family=Montserrat&display=swap",
+        "https://fonts.googleapis.com/css2?family=Source+Sans+3&display=swap",
+      ],
+      body: "<div></div>",
+    });
+
+    const montserrat = html.indexOf(
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat&amp;display=swap">',
+    );
+    const sourceSans = html.indexOf(
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3&amp;display=swap">',
+    );
+    const shared = html.indexOf('<link rel="stylesheet" href="../styles.css">');
+
+    expect(montserrat).toBeGreaterThan(-1);
+    expect(sourceSans).toBeGreaterThan(-1);
+    expect(shared).toBeGreaterThan(-1);
+    expect(montserrat).toBeLessThan(shared);
+    expect(sourceSans).toBeLessThan(shared);
+  });
+
+  it("emits no font links when the project only uses system fonts", async () => {
+    const project = projectWithPages([
+      page(
+        "Home",
+        "/",
+        [
+          createText({
+            id: "node_arial",
+            name: "Arial",
+            content: "System",
+            props: { text: { fontFamily: "Arial" } },
+          }),
+        ],
+        "home",
+      ),
+    ]);
+
+    const result = await staticAdapter.publish(request(project));
+    const html = result.files["index.html"] as string;
+
+    expect(html).not.toContain("fonts.googleapis.com");
+  });
+
+  it("links the Google fonts a project uses in every page document", async () => {
+    const project = projectWithPages([
+      page(
+        "Home",
+        "/",
+        [
+          createText({
+            id: "node_montserrat",
+            name: "Montserrat",
+            content: "Hello",
+            props: { text: { fontFamily: "Montserrat" } },
+          }),
+        ],
+        "home",
+      ),
+      page("About", "/about", [], "about"),
+    ]);
+
+    const result = await staticAdapter.publish(request(project));
+    const link =
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat&amp;display=swap">';
+
+    expect(result.files["index.html"]).toContain(link);
+    expect(result.files["about/index.html"]).toContain(link);
   });
 });
 

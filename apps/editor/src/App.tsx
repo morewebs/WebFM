@@ -5,6 +5,7 @@ import { installShortcuts } from "./keyboard/registry";
 import { useProjectStore } from "./state/project-store";
 import { Canvas } from "./ui/canvas/Canvas";
 import { PublishDialog } from "./ui/dialogs/PublishDialog";
+import { ensureProjectFonts } from "./ui/fonts";
 import { ContextMenu } from "./ui/menus/ContextMenu";
 import { unwrapSelection, wrapSelection } from "./ui/menus/context-actions";
 import { Preview } from "./ui/preview/Preview";
@@ -67,6 +68,15 @@ export function App() {
       }
     })();
   }, [createProject, openProject, refreshProjects]);
+
+  const projectId = project?.id;
+  useEffect(() => {
+    if (!projectId) return;
+    // The picker loads a family the moment it is chosen; a full project walk
+    // only needs to run when a different project opens.
+    const current = useProjectStore.getState().project;
+    if (current) ensureProjectFonts(current);
+  }, [projectId]);
 
   useEffect(
     () =>

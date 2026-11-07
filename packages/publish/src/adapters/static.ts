@@ -1,5 +1,5 @@
 import type { Asset, Page, Project } from "@webfm/model";
-import { type RenderOptions } from "@webfm/render";
+import { projectFontHrefs, type RenderOptions } from "@webfm/render";
 import { buildPageCss, renderPageToHtml } from "@webfm/render/server";
 import { defaultAssetPath, normalizeAssetPath, publishAssetUrl } from "../asset-paths";
 import { relativeStylesheetHref, renderPageDocument } from "../document";
@@ -91,12 +91,14 @@ export const staticAdapter: PublishAdapter = {
 
     const usedPaths = new Set<string>();
     const stylesheets: string[] = [];
+    const fontLinks = projectFontHrefs(project);
 
     for (const page of project.pages) {
       const filePath = uniquePagePath(page.path, usedPaths);
       files[filePath] = renderPageDocument({
         title: pageTitle(page, project),
         stylesheetHref: relativeStylesheetHref(routeDepth(page.path)),
+        fontLinks,
         body: renderPageToHtml(project, page, options),
       });
       stylesheets.push(buildPageCss(project, page, options));
