@@ -901,6 +901,35 @@ export function Canvas() {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (isEditableTarget(event.target)) return;
 
+      const zoomModifier = event.metaKey || event.ctrlKey;
+      if (
+        zoomModifier &&
+        !event.shiftKey &&
+        !event.altKey &&
+        (event.key === "=" || event.key === "+" || event.key === "-" || event.key === "_")
+      ) {
+        event.preventDefault();
+        const state = useProjectStore.getState();
+        const stageElement = stageRef.current;
+        const viewport = viewportRef.current;
+        if (!stageElement || !viewport) return;
+        const factor = event.key === "-" || event.key === "_" ? 1 / 1.25 : 1.25;
+        const nextZoom = clampZoom(state.zoom * factor);
+        if (Math.abs(nextZoom - state.zoom) < 0.0001) return;
+        const currentPageWidth = stageElement.getBoundingClientRect().width / state.zoom;
+        const nextPan = zoomPanAtPointer(
+          { x: viewport.clientWidth / 2, y: viewport.clientHeight / 2 },
+          viewport.clientWidth,
+          currentPageWidth,
+          state.zoom,
+          nextZoom,
+          state.pan,
+        );
+        state.setZoom(nextZoom);
+        state.setPan(nextPan);
+        return;
+      }
+
       if (event.code === "Space" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         spaceRef.current = true;
         setSpaceDown(true);

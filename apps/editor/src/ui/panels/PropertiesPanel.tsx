@@ -475,6 +475,19 @@ function NumberField({
         } else if (event.key === "Escape") {
           cancelled.current = true;
           event.currentTarget.blur();
+        } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          // Framer's number fields step with the arrow keys; Shift steps by 10.
+          event.preventDefault();
+          const parsed = Number.parseFloat(draft);
+          const base = Number.isFinite(parsed) ? parsed : (value ?? 0);
+          const step = event.shiftKey ? 10 : 1;
+          const next = clampNumber(
+            base + (event.key === "ArrowUp" ? step : -step),
+            min,
+            max,
+          );
+          setDraft(formatNumber(next));
+          if (next !== value) onCommit(next);
         }
       }}
     />
