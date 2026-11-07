@@ -50,7 +50,7 @@ outside this project's scope.
 | Pages: page settings/templates/CMS pages/duplicate/delete | Missing | |
 | Layers: tree, expand, rename, hide/lock, drag, context menu | Done | |
 | Layers: grouping/ungrouping, wrap/unwrap frame or stack | Done | Group/ungroup, Add frame/Add stack, Remove wrapper; shortcuts and context menu verified. |
-| Layers: multi-select drag, range select | Partial | Multi-select exists; drag is single-row. |
+| Layers: multi-select drag, range select | Partial | Shift-click selects a contiguous range and selection auto-expands/scrolls; drag is still single-row. |
 | Layers: alphabetical sort | Done | Empty-canvas context menu. |
 | Assets: image upload/list/insert | Done | |
 | Assets: components | Done | Cards with variant/instance counts and edit. |
@@ -67,7 +67,7 @@ outside this project's scope.
 | --- | --- | --- |
 | Pan/zoom, breakpoint bar, page root | Done | Wheel pans, Cmd/Ctrl+wheel zooms around the pointer, Cmd/Ctrl +/- zooms around the centre. |
 | Select/hover/move/resize/nudge | Done | |
-| Clipboard | Done | Cmd/Ctrl+C and V copy/paste layers with fresh ids; Cmd/Ctrl+A selects every unlocked top-level layer. |
+| Clipboard | Done | Cmd/Ctrl+C and V copy/paste layers with fresh ids (one clipboard shared with the context menu); Cmd/Ctrl+A selects every unlocked top-level layer; Cmd/Ctrl+L and Cmd/Ctrl+; toggle lock and visibility. |
 | Text editing (plain text) | Partial | The Text tool starts an empty layer with a caret; the box grows as you type and the layer beneath is hidden while editing. Enter adds a hard line break, Escape commits, and an empty layer is discarded on exit; double-click places the caret at the click point. No rich text spans, links, lists or paragraph spacing. |
 | Draw tools: frame, stack, grid, oval, text, image | Done | |
 | Shape tools: rectangle, rounded, polygon, star | Partial | Rectangle (R), Rounded (U) and Oval (O) work; polygon/star/pen missing. |
@@ -77,7 +77,7 @@ outside this project's scope.
 | Grid overlay | Missing | |
 | Marquee/lasso selection | Partial | Marquee drag on empty canvas selects intersecting top-level layers; Shift adds. No lasso. |
 | Multi-selection transform | Partial | Movement/resize per node; no group bounding transform. |
-| Component edit mode | Done | Basic bar, variant switching, back to page. |
+| Component edit mode | Done | Basic bar, variant switching, back to page. Clicking, hovering, right-clicking or double-clicking anywhere inside an instance targets the instance. |
 | Nested components | Missing | Page-only create/insert. |
 | Positioning modes | Done | Relative/Absolute/Fixed/Sticky; fixed is absolute in the editor and fixed when published. |
 | Constraints/auto-pin | Missing | |

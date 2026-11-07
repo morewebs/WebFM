@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 14:30
+**Updated:** 2026-11-07 21:55
 
 ## Current milestone
 
@@ -170,6 +170,13 @@ CMS.
   row outlined that layer on the canvas; ArrowUp stepped Position X 140→141;
   Ctrl+C then Ctrl+V added one layer with a fresh id and selected it, and
   Ctrl+A selected all nine top-level layers.
+- Fidelity follow-ups: locking a frame made its child unselectable on canvas;
+  Enter on a selected text opened the editor with all text selected; the
+  context menu's Paste used the same clipboard as Ctrl+C/V (13→14 nodes);
+  Ctrl+L and Ctrl+; toggled lock and visibility; Shift-click in the layer tree
+  selected a contiguous five-row range; selecting a layer expanded its
+  collapsed ancestors; clicking inside a component instance selected the
+  instance instead of leaving the page root selected.
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
   overrides, breakpoint bar always blue, 1px shell offsets, variant node ids
