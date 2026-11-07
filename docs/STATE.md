@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 12:30
+**Updated:** 2026-11-07 13:05
 
 ## Current milestone
 
@@ -155,6 +155,11 @@ CMS.
   pinned by animation fill, print omission, component-root effects, Preview
   autosave/breakpoint reveal loss, and added the runtime-load fallback.
 
+- Text creation: clicking the top bar Text tool then the canvas created a text
+  layer and immediately opened the inline editor with "Text" selected (0-4);
+  typing replaced it with "Hello Framer" and the layer auto-renamed; drag
+  creation and double-click editing follow the same path. Reported by the user
+  after Framer comparison and fixed.
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
   overrides, breakpoint bar always blue, 1px shell offsets, variant node ids
@@ -166,8 +171,9 @@ CMS.
   partial typography detaches still inheriting base edits, style fonts missing
   after reload, orphaned instance overrides on breakpoint removal, sparse-fill
   links, non-disjoint publish media blocks, primary-baked appear keyframes,
-  scroll reveal pinning hover/tap, print-hidden scroll layers, and
-  component-root scroll effects not reaching the instance wrapper.
+  scroll reveal pinning hover/tap, print-hidden scroll layers,
+  component-root scroll effects not reaching the instance wrapper, and
+  Text-tool creation not entering editing.
 
 ## Next
 

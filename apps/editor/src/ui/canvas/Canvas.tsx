@@ -34,6 +34,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -681,6 +682,7 @@ export function Canvas() {
   const rectsRef = useRef<Map<NodeId, CanvasRect>>(new Map());
   const spaceRef = useRef(false);
   const editorClosedRef = useRef(false);
+  const editorFocusedRef = useRef(false);
 
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -934,17 +936,36 @@ export function Canvas() {
   /* --------------------------------------------------------------- editing */
 
   const editingNodeId = editing?.nodeId;
+  const editedRectForFocus = editing ? rects.get(editing.nodeId) : undefined;
+
+  // The node is committed to the DOM before this runs; measure it without
+  // waiting for an animation frame (which can be throttled in a background tab).
+  // This lets a freshly inserted text layer show its editor immediately.
+  useLayoutEffect(() => {
+    if (!editing) return;
+    const stage = stageRef.current;
+    const viewport = viewportRef.current;
+    if (!stage || !viewport) return;
+    const element = findNodeElement(stage, editing.nodeId);
+    if (!element) return;
+    const next = new Map(rectsRef.current);
+    next.set(editing.nodeId, measureNodeRect(stage, viewport.getBoundingClientRect(), element));
+    rectsRef.current = next;
+    setRects(next);
+  }, [editing?.nodeId, project]);
 
   useEffect(() => {
-    if (!editingNodeId) return;
-    const frame = requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      textarea.focus();
-      textarea.select();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [editingNodeId]);
+    if (!editingNodeId) {
+      editorFocusedRef.current = false;
+      return;
+    }
+    if (!editedRectForFocus || editorFocusedRef.current) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.select();
+    editorFocusedRef.current = true;
+  }, [editingNodeId, editedRectForFocus]);
 
   const closeEditor = (commit: boolean): void => {
     if (editorClosedRef.current) return;
@@ -1572,8 +1593,11 @@ export function Canvas() {
       { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) },
       dragged,
     );
-    state.insertNode(node, { parentId });
+    const insertedId = state.insertNode(node, { parentId });
     useUIStore.getState().setTool("select");
+    // Framer drops a freshly created text layer straight into editing with its
+    // content selected, so typing replaces the placeholder immediately.
+    if (session.tool === "text" && insertedId) beginTextEditing(insertedId);
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1607,6 +1631,33 @@ export function Canvas() {
     if (!sessionRef.current) useProjectStore.getState().setHovered(null);
   };
 
+  /** Opens the inline text editor for a text layer, measuring it first. */
+  const beginTextEditing = (nodeId: NodeId): void => {
+    const state = useProjectStore.getState();
+    const currentProject = state.project;
+    const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
+    if (!currentProject || !currentScene) return;
+    const node = findNode(currentScene.root, nodeId);
+    if (node?.type !== "text" || node.locked) return;
+    const props = resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints);
+    const stage = stageRef.current;
+    const viewport = viewportRef.current;
+    const element = stage ? findNodeElement(stage, nodeId) : null;
+    if (stage && viewport && element) {
+      const next = new Map(rectsRef.current);
+      next.set(nodeId, measureNodeRect(stage, viewport.getBoundingClientRect(), element));
+      rectsRef.current = next;
+      setRects(next);
+    }
+    editorClosedRef.current = false;
+    editorFocusedRef.current = false;
+    setEditing({
+      nodeId,
+      value: props.text.content,
+      original: props.text.content,
+    });
+  };
+
   const handleDoubleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
     const state = useProjectStore.getState();
     const currentProject = state.project;
@@ -1624,22 +1675,8 @@ export function Canvas() {
       return;
     }
     if (node.type !== "text") return;
-    const props = resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints);
-    const stage = stageRef.current;
-    const viewport = viewportRef.current;
-    if (stage && viewport) {
-      const next = new Map(rectsRef.current);
-      next.set(nodeId, measureNodeRect(stage, viewport.getBoundingClientRect(), nodeElement));
-      rectsRef.current = next;
-      setRects(next);
-    }
     event.preventDefault();
-    editorClosedRef.current = false;
-    setEditing({
-      nodeId,
-      value: props.text.content,
-      original: props.text.content,
-    });
+    beginTextEditing(nodeId);
   };
 
   /* ----------------------------------------------------------------- render */

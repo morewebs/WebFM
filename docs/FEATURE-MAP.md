@@ -67,7 +67,7 @@ outside this project's scope.
 | --- | --- | --- |
 | Pan/zoom, breakpoint bar, page root | Done | |
 | Select/hover/move/resize/nudge | Done | |
-| Text editing (plain text) | Partial | No rich text spans, links, lists, paragraph spacing. |
+| Text editing (plain text) | Partial | No rich text spans, links, lists, paragraph spacing. Text-tool creation enters editing with the content selected, like Framer. |
 | Draw tools: frame, stack, grid, oval, text, image | Done | |
 | Shape tools: rectangle, rounded, polygon, star | Partial | Rectangle (R), Rounded (U) and Oval (O) work; polygon/star/pen missing. |
 | Pen/path/vector editing | Missing | |

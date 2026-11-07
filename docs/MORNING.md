@@ -86,6 +86,11 @@ Chrome.
 easing in the Effects section; CSS keyframes/transitions in Preview and publish.
 Verified in Chrome, including the published CSS.
 
+**Text creation** — starting the Text tool and clicking or dragging the canvas
+now creates the layer and immediately opens the inline editor with the content
+selected, so typing replaces the placeholder (reported after testing the top
+bar Text button). Double-click editing is unchanged.
+
 **Scroll effects** — the Effects + menu now has the Framer **Scroll** trigger
 with the same Fade/Slide/Scale, direction, duration, delay and easing controls.
 Layers reveal once when they enter the viewport. Published CSS hides scroll
