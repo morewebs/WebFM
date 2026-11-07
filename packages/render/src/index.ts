@@ -4,6 +4,7 @@ export {
   type ResolvedComponentScene,
   resolveComponentInstance,
   resolveComponentScene,
+  resolveInstanceBox,
 } from "./components";
 export { buildPageCss, rule, styleToCss } from "./css";
 export {

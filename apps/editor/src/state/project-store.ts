@@ -26,6 +26,7 @@ import {
   type ComponentVariant,
   canRedo,
   canUndo,
+  clearInstanceStyleOverrides as clearInstanceStyleOverridesOperation,
   createComponentFromNode,
   createHistory,
   type DeepPartial,
@@ -36,6 +37,7 @@ import {
   type Guide,
   getPage,
   type HistoryState,
+  hasInstanceStyleOverride,
   type ImageProps,
   insertComponentInstance as insertComponentInstanceOperation,
   insertNode as insertNodeOperation,
@@ -45,6 +47,7 @@ import {
   type Page,
   type PageId,
   type Project,
+  partialMatches,
   redo as redoHistory,
   removeBreakpoint as removeBreakpointOperation,
   removeColorStyle as removeColorStyleOperation,
@@ -57,6 +60,7 @@ import {
   resolveNodeProps,
   type SceneNode,
   type SceneTarget,
+  type StyleProps,
   setInstanceVariant as setInstanceVariantOperation,
   type TextNode,
   type TextProps,
@@ -71,11 +75,13 @@ import {
   updateColorStyle as updateColorStyleOperation,
   updateGuide as updateGuideOperation,
   updateImageProps,
+  updateInstanceStyle as updateInstanceStyleOperation,
   updateTextProps,
   updateTextStyle as updateTextStyleOperation,
   type VariantId,
   wrapNodes,
 } from "@webfm/model";
+import { resolveInstanceBox } from "@webfm/render";
 import type { Draft } from "immer";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
 import { ApiError, api as defaultApi, type ProjectApi, type PublishResponse } from "../api/client";
@@ -155,6 +161,13 @@ export interface ProjectStoreState {
   setPan(pan: Pan): void;
   applyRecipe(label: string, recipe: (draft: Draft<Project>) => void, coalesceKey?: string): void;
   updateBox(nodeId: NodeId, patch: DeepPartial<BoxProps>, breakpointId?: BreakpointId): void;
+  /**
+   * Writes sparse style overrides on a component instance at the active
+   * breakpoint. Position and size stay owned by `updateBox`.
+   */
+  updateInstanceStyle(nodeId: NodeId, patch: DeepPartial<StyleProps>): void;
+  /** Removes the selected instance's style overrides at the active breakpoint. */
+  resetInstanceStyle(nodeId: NodeId): void;
   setNodePositions(updates: Array<{ nodeId: NodeId; x: number; y: number }>, label?: string): void;
   updateText(nodeId: NodeId, patch: DeepPartial<TextProps>): void;
   updateImage(nodeId: NodeId, patch: DeepPartial<ImageProps>): void;
@@ -584,6 +597,51 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       });
     };
 
+    /**
+     * Writes an instance style override. The no-op check compares against the
+     * instance's fully resolved appearance, so restating a master value does not
+     * create an override or a history entry.
+     */
+    const updateInstanceStyle = (nodeId: NodeId, patch: DeepPartial<StyleProps>): void => {
+      const state = get();
+      const scene = currentScene();
+      const project = state.project;
+      if (!scene || !project) return;
+      const node = findNode(scene.root, nodeId);
+      if (node?.type !== "componentInstance") return;
+
+      const breakpointId = state.activeBreakpointId;
+      const effective = resolveInstanceBox(project, node, breakpointId);
+      if (!effective || partialMatches(effective.style, patch)) return;
+
+      applyRecipe("Update instance style", (draft) => {
+        updateInstanceStyleOperation(
+          draft,
+          withTarget(scene.target, { nodeId, breakpointId, patch }),
+        );
+      });
+    };
+
+    /** Clears the active breakpoint's instance style layer; empty is a no-op. */
+    const resetInstanceStyle = (nodeId: NodeId): void => {
+      const state = get();
+      const scene = currentScene();
+      const project = state.project;
+      if (!scene || !project) return;
+      const node = findNode(scene.root, nodeId);
+      if (node?.type !== "componentInstance") return;
+
+      const breakpointId = state.activeBreakpointId;
+      if (!hasInstanceStyleOverride(node, breakpointId, project.breakpoints)) return;
+
+      applyRecipe("Reset instance style", (draft) => {
+        clearInstanceStyleOverridesOperation(
+          draft,
+          withTarget(scene.target, { nodeId, breakpointId }),
+        );
+      });
+    };
+
     const setNodePositions = (
       updates: Array<{ nodeId: NodeId; x: number; y: number }>,
       label = "Set positions",
@@ -802,6 +860,10 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       applyRecipe,
 
       updateBox,
+
+      updateInstanceStyle,
+
+      resetInstanceStyle,
 
       setNodePositions,
 
@@ -1102,7 +1164,7 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         let seed: { color: string; opacity: number } = { ...DEFAULT_COLOR_STYLE };
         // Creating a style from a layer links that layer to the new style, the
         // way Framer does when a style is saved from the color picker.
-        let seedTarget: { nodeId: NodeId; type: "frame" | "text" } | null = null;
+        let seedTarget: { nodeId: NodeId; type: "frame" | "text" | "instance" } | null = null;
         if (fromSelection && scene) {
           const selectedId = state.selection[0];
           const node = selectedId ? findNode(scene.root, selectedId) : null;
@@ -1124,6 +1186,12 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
               seed = { color: props.style.fill.color, opacity: props.style.fill.opacity };
               seedTarget = { nodeId: node.id, type: "frame" };
             }
+          } else if (node?.type === "componentInstance") {
+            const box = resolveInstanceBox(project, node, state.activeBreakpointId);
+            if (box?.style.fill?.type === "solid") {
+              seed = { color: box.style.fill.color, opacity: box.style.fill.opacity };
+              seedTarget = { nodeId: node.id, type: "instance" };
+            }
           }
         }
 
@@ -1141,6 +1209,22 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
                   patch: {
                     text: { color: seed.color },
                     colorStyleId: id,
+                  },
+                }),
+              );
+            } else if (seedTarget.type === "instance") {
+              updateInstanceStyleOperation(
+                draft,
+                withTarget(scene.target, {
+                  nodeId: seedTarget.nodeId,
+                  breakpointId,
+                  patch: {
+                    fill: {
+                      type: "solid",
+                      color: seed.color,
+                      opacity: seed.opacity,
+                      styleId: id,
+                    },
                   },
                 }),
               );
@@ -1211,7 +1295,9 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         const targets = state.selection.flatMap((nodeId) => {
           const node = findNode(scene.root, nodeId);
           if (!node) return [];
-          if (node.type !== "frame" && node.type !== "text") return [];
+          if (node.type !== "frame" && node.type !== "text" && node.type !== "componentInstance") {
+            return [];
+          }
           return [{ nodeId, type: node.type }];
         });
         if (targets.length === 0) {
@@ -1230,9 +1316,11 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
             );
             return props.colorStyleId === style.id && props.text.color === style.color;
           }
-          if (node?.type !== "frame") return false;
-          const fill = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints).style
-            .fill;
+          if (node?.type !== "frame" && node?.type !== "componentInstance") return false;
+          const fill =
+            node.type === "componentInstance"
+              ? resolveInstanceBox(project, node, breakpointId)?.style.fill
+              : resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints).style.fill;
           return (
             fill?.type === "solid" &&
             fill.styleId === style.id &&
@@ -1254,6 +1342,22 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
                   patch: {
                     text: { color: style.color },
                     colorStyleId: style.id,
+                  },
+                }),
+              );
+            } else if (target.type === "componentInstance") {
+              updateInstanceStyleOperation(
+                draft,
+                withTarget(scene.target, {
+                  nodeId: target.nodeId,
+                  breakpointId,
+                  patch: {
+                    fill: {
+                      type: "solid",
+                      color: style.color,
+                      opacity: style.opacity,
+                      styleId: style.id,
+                    },
                   },
                 }),
               );

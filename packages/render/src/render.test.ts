@@ -620,3 +620,45 @@ describe("component instances", () => {
     expect(css).toContain(`.${nodeClassName("node_label")}-text {`);
   });
 });
+
+describe("disjoint breakpoint CSS", () => {
+  it("scopes each breakpoint so narrower overrides can remove wider declarations", () => {
+    const project = createProject({ name: "Disjoint", now: "2026-01-01T00:00:00.000Z" });
+    const page = project.pages[0]!;
+    const frame = createFrame({
+      id: "node_gradient",
+      props: {
+        style: {
+          fill: {
+            type: "linear-gradient",
+            angle: 90,
+            stops: [
+              { color: "#ff0000", position: 0 },
+              { color: "#0000ff", position: 100 },
+            ],
+          },
+        },
+      },
+    });
+    frame.responsive.overrides.bp_phone = {
+      style: { fill: { type: "solid", color: "#00ff00", opacity: 1 } },
+    };
+    page.root.children.push(frame);
+
+    const css = buildPageCss(project, page, {
+      breakpointId: "bp_desktop",
+      mode: "publish",
+    });
+    expect(css).toContain("@media (min-width: 1200px)");
+    expect(css).toContain("@media (max-width: 1199px) and (min-width: 810px)");
+    expect(css).toContain("@media (max-width: 809px)");
+
+    const phoneStart = css.indexOf("@media (max-width: 809px)");
+    const phoneBlock = css.slice(phoneStart);
+    const ruleStart = phoneBlock.indexOf(`.${nodeClassName("node_gradient")} {`);
+    expect(ruleStart).toBeGreaterThan(-1);
+    const ruleBody = phoneBlock.slice(ruleStart, phoneBlock.indexOf("}", ruleStart));
+    expect(ruleBody).toContain("background-color: #00ff00");
+    expect(ruleBody).not.toContain("background-image");
+  });
+});

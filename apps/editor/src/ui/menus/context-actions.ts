@@ -28,7 +28,9 @@ import {
   setNodeLocked,
   setNodeVisible,
   updateBoxProps,
+  updateInstanceStyle as updateInstanceStyleOperation,
 } from "@webfm/model";
+import { resolveInstanceBox } from "@webfm/render";
 import { type ActiveScene, activeSceneOf, useProjectStore } from "../../state/project-store";
 import { useUIStore } from "../ui-store";
 
@@ -135,11 +137,22 @@ export function copySelection(): void {
   if (nodes.length > 0) clipboard.nodes = nodes;
 }
 
+/** The appearance a node actually renders, including instance overrides. */
+function effectiveBox(node: SceneNode, context: { project: Project; breakpointId: string }): BoxProps {
+  if (node.type === "componentInstance") {
+    return (
+      resolveInstanceBox(context.project, node, context.breakpointId) ??
+      resolveNodeProps(node, context.breakpointId, context.project.breakpoints)
+    );
+  }
+  return resolveNodeProps(node, context.breakpointId, context.project.breakpoints);
+}
+
 export function copyStyle(nodeId?: NodeId): void {
   const context = currentContext();
   const node = context ? targetNode(context, nodeId) : null;
-  if (!node) return;
-  const base = node.responsive.base;
+  if (!context || !node) return;
+  const base = effectiveBox(node, context);
   clipboard.style = structuredClone({
     style: base.style,
     layout: base.layout,
@@ -150,8 +163,7 @@ export function copyFill(nodeId?: NodeId): void {
   const context = currentContext();
   const node = context ? targetNode(context, nodeId) : null;
   if (!context || !node) return;
-  const props = resolveNodeProps(node, context.breakpointId, context.project.breakpoints);
-  clipboard.fill = structuredClone(props.style.fill);
+  clipboard.fill = structuredClone(effectiveBox(node, context).style.fill);
 }
 
 export function copyText(nodeId?: NodeId): void {
@@ -208,6 +220,18 @@ export function pasteStyle(): void {
   if (ids.length === 0) return;
   useProjectStore.getState().applyRecipe("Paste style", (draft) => {
     for (const nodeId of ids) {
+      const node = findNode(context.scene.root, nodeId);
+      if (node?.type === "componentInstance") {
+        if (patch.style !== undefined) {
+          updateInstanceStyleOperation(draft, {
+            ...context.scene.target,
+            nodeId,
+            breakpointId: context.breakpointId,
+            patch: patch.style,
+          });
+        }
+        continue;
+      }
       updateBoxProps(draft, {
         ...context.scene.target,
         nodeId,
@@ -226,6 +250,16 @@ export function pasteFill(): void {
   const fill = clipboard.fill;
   useProjectStore.getState().applyRecipe("Paste fill", (draft) => {
     for (const nodeId of ids) {
+      const node = findNode(context.scene.root, nodeId);
+      if (node?.type === "componentInstance") {
+        updateInstanceStyleOperation(draft, {
+          ...context.scene.target,
+          nodeId,
+          breakpointId: context.breakpointId,
+          patch: { fill: fill ?? null },
+        });
+        continue;
+      }
       updateBoxProps(draft, {
         ...context.scene.target,
         nodeId,

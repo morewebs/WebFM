@@ -184,6 +184,12 @@ export interface ComponentInstanceNode extends NodeBase<BoxProps> {
   componentId: ComponentId;
   variantId: VariantId | null;
   propertyValues: Record<PropertyId, ComponentPropertyValue>;
+  /**
+   * Sparse style overrides layered over the variant root's resolved style.
+   * Optional so projects authored before instance overrides keep loading.
+   * The instance's own `responsive` owns position and size only.
+   */
+  styleOverrides?: Responsive<DeepPartial<StyleProps>>;
 }
 
 /* --------------------------------------------------------------------- props */

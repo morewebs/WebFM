@@ -14,7 +14,8 @@ outside this project's scope.
   overflow X/Y/scroll, viewport sizing, min/max fields,
   rectangle/rounded/oval tools, Google Fonts picker, rulers, guides and
   smart-guide snapping, responsive breakpoints,
-  components/instances/variants/property controls, Appear/Hover/Tap effects,
+  components/instances/variants/property controls, instance style overrides,
+  Appear/Hover/Tap effects,
   alignment, context menus, preview, static publish.
 - **Partial:** Pages, Layers, Assets, Style, Components, Interactions, menus,
   shortcuts, publishing.
@@ -121,7 +122,7 @@ outside this project's scope.
 | Variants add/switch/default | Done | |
 | Property controls (text/color/number/boolean/visible/opacity) | Done | |
 | Instance overrides for those properties | Done | Purple override state + reset. |
-| Style overrides on instances | Missing | Master style is authoritative. |
+| Style overrides on instances | Done | Fill (including color-style links/swatches), border, radius, shadow, opacity/blend, overflow and effects in the instance Styles section; sparse per-breakpoint layers merge over the master; Overridden badge and active-breakpoint Reset. Color styles can be created/applied from an instance selection. Verified; published CSS uses disjoint breakpoint blocks. |
 | Per-variant property defaults | Missing | Component-wide defaults. |
 | Nested components/slots | Missing | Page-only model create/insert. |
 | Replace with / unlink / update badges | Missing | |
@@ -166,11 +167,12 @@ outside this project's scope.
 5. Shape tools: rectangle and rounded done; polygon/star still missing.
 6. ~~Color styles and text styles in Assets~~ — done and verified.
 7. ~~Rulers/guides/smart guides and snapping~~ — done and verified.
+8. ~~Instance style overrides~~ — done and verified.
 
 ## P1 gaps
 
 - Press/drag/scroll interactions, overlays, set-variant actions.
-- Instance style overrides, per-variant property defaults, nested components.
+- Per-variant property defaults, nested components.
 - Code components and code overrides.
 - CMS, localization, analytics, settings.
 - Versioned publishing/SEO/domains (hosting out).

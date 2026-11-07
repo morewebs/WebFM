@@ -17,6 +17,7 @@ import {
   createPage,
   createResponsive,
   mergeDeep,
+  resolveResponsive,
 } from "./defaults";
 import { createId } from "./ids";
 import { findComponentInstances, walkNode } from "./tree";
@@ -52,6 +53,7 @@ import type {
   Responsive,
   SceneNode,
   SceneTarget,
+  StyleProps,
   TextProps,
   TextStyle,
   TextStyleId,
@@ -341,6 +343,14 @@ export function removeBreakpoint(draft: Draft<Project>, breakpointId: Breakpoint
 
   const removeOverride = (node: Draft<SceneNode>): void => {
     delete node.responsive.overrides[breakpointId];
+    if (node.type === "componentInstance" && node.styleOverrides) {
+      delete node.styleOverrides.overrides[breakpointId];
+      const baseEmpty = Object.keys(node.styleOverrides.base).length === 0;
+      const layersEmpty = Object.values(node.styleOverrides.overrides).every(
+        (layer) => layer === undefined || Object.keys(layer).length === 0,
+      );
+      if (baseEmpty && layersEmpty) delete node.styleOverrides;
+    }
   };
   for (const page of draft.pages) walkDraftNode(page.root, removeOverride);
   for (const component of draft.components) {
@@ -699,6 +709,61 @@ export function updateBoxProps(
     options.breakpointId,
     options.patch,
   );
+}
+
+/**
+ * Writes sparse style overrides on a component instance. The override is
+ * layered over the variant root's resolved style; the instance's own responsive
+ * props keep owning position and size.
+ */
+export function updateInstanceStyle(
+  draft: Draft<Project>,
+  options: SceneTarget & {
+    nodeId: NodeId;
+    breakpointId: BreakpointId;
+    patch: DeepPartial<StyleProps>;
+  },
+): void {
+  const node = getTargetNodeOrThrow(draft, options, options.nodeId);
+  if (node.type !== "componentInstance") {
+    throw new Error(`Node "${options.nodeId}" is a ${node.type}; expected a component instance.`);
+  }
+  if (!node.styleOverrides) node.styleOverrides = { base: {}, overrides: {} };
+  writeResponsive(draft, { responsive: node.styleOverrides }, options.breakpointId, options.patch);
+}
+
+/**
+ * Removes one breakpoint's instance style override layer. The primary
+ * breakpoint clears `base`; a smaller one deletes its override entry. Other
+ * breakpoints are left intact, and an empty container is removed entirely.
+ */
+export function clearInstanceStyleOverrides(
+  draft: Draft<Project>,
+  options: SceneTarget & { nodeId: NodeId; breakpointId: BreakpointId },
+): void {
+  const node = getTargetNodeOrThrow(draft, options, options.nodeId);
+  if (node.type !== "componentInstance") {
+    throw new Error(`Node "${options.nodeId}" is a ${node.type}; expected a component instance.`);
+  }
+  const primary = draft.breakpoints[0];
+  if (!primary) {
+    throw new Error("Project has no breakpoints; cannot clear style overrides.");
+  }
+  if (!draft.breakpoints.some((breakpoint) => breakpoint.id === options.breakpointId)) {
+    throw new Error(`Breakpoint "${options.breakpointId}" was not found.`);
+  }
+
+  const overrides = node.styleOverrides;
+  if (!overrides) return;
+
+  if (options.breakpointId === primary.id) overrides.base = {};
+  else delete overrides.overrides[options.breakpointId];
+
+  const baseEmpty = Object.keys(overrides.base).length === 0;
+  const layersEmpty = Object.values(overrides.overrides).every(
+    (layer) => layer === undefined || Object.keys(layer).length === 0,
+  );
+  if (baseEmpty && layersEmpty) delete node.styleOverrides;
 }
 
 export function updateTextProps(
@@ -1356,10 +1421,154 @@ function forEachBoxLayer(
   }
 }
 
+/** Visits an instance's base style-override layer and every breakpoint layer. */
+function forEachInstanceStyleLayer(
+  instance: Draft<ComponentInstanceNode>,
+  visitor: (layer: DeepPartial<StyleProps>) => void,
+): void {
+  const overrides = instance.styleOverrides as unknown as
+    | {
+        base: DeepPartial<StyleProps>;
+        overrides: Record<BreakpointId, DeepPartial<StyleProps> | undefined>;
+      }
+    | undefined;
+  if (!overrides) return;
+  visitor(overrides.base);
+  for (const layer of Object.values(overrides.overrides)) {
+    if (layer) visitor(layer);
+  }
+}
+
+/** The variant root an instance resolves to, or null when it is missing. */
+function findInstanceRootDraft(
+  project: Draft<Project>,
+  instance: ComponentInstanceNode,
+): Draft<FrameNode> | null {
+  const component = project.components.find((candidate) => candidate.id === instance.componentId);
+  if (!component) return null;
+  const requestedId = instance.variantId ?? component.defaultVariantId;
+  const variant =
+    component.variants.find((candidate) => candidate.id === requestedId) ??
+    component.variants.find((candidate) => candidate.id === component.defaultVariantId) ??
+    component.variants[0];
+  return variant?.root ?? null;
+}
+
+/**
+ * Recursively compares the fields a patch mentions against a resolved value.
+ * Undefined patch fields are ignored, matching `mergeDeep`'s behavior.
+ */
+export function partialMatches(base: unknown, patch: unknown): boolean {
+  if (patch === undefined) return true;
+  if (Array.isArray(patch)) return deepEquals(base, patch);
+  if (patch !== null && typeof patch === "object") {
+    if (base === null || typeof base !== "object") return false;
+    return Object.entries(patch as Record<string, unknown>).every(
+      ([key, value]) =>
+        value === undefined || partialMatches((base as Record<string, unknown>)[key], value),
+    );
+  }
+  return Object.is(base, patch);
+}
+
+function deepEquals(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length && left.every((entry, index) => deepEquals(entry, right[index]))
+    );
+  }
+  if (left !== null && right !== null && typeof left === "object" && typeof right === "object") {
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const leftKeys = Object.keys(leftRecord);
+    const rightKeys = Object.keys(rightRecord);
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every((key) => deepEquals(leftRecord[key], rightRecord[key]))
+    );
+  }
+  return Object.is(left, right);
+}
+
 function getColorStyleOrThrow(project: Draft<Project>, id: ColorStyleId): Draft<ColorStyle> {
   const style = project.colorStyles.find((candidate) => candidate.id === id);
   if (!style) throw new Error(`Color style "${id}" was not found.`);
   return style;
+}
+
+/**
+ * Recolors an instance's style-override layers that follow the color style.
+ * The chain starts from the variant root's fill link at each breakpoint, then
+ * runs through the instance layers widest-to-narrowest with the same three
+ * link states as responsive fills: an explicit other id ends the chain, an
+ * omitted id inherits it, and a non-solid fill ends it.
+ */
+function propagateColorStyleToInstance(
+  project: Draft<Project>,
+  instance: Draft<ComponentInstanceNode>,
+  id: ColorStyleId,
+  color: string,
+  opacity: number,
+): void {
+  const rawOverrides = instance.styleOverrides as unknown as
+    | {
+        base: DeepPartial<StyleProps>;
+        overrides: Record<BreakpointId, DeepPartial<StyleProps> | undefined>;
+      }
+    | undefined;
+  if (!rawOverrides) return;
+
+  const root = findInstanceRootDraft(project, instance);
+  const rootResponsive = root
+    ? (unwrapDraft(root.responsive) as unknown as Responsive<BoxProps>)
+    : null;
+
+  for (let index = 0; index < project.breakpoints.length; index += 1) {
+    const breakpoint = project.breakpoints[index]!;
+    const rootFill = rootResponsive
+      ? resolveResponsive(rootResponsive, breakpoint.id, project.breakpoints).style.fill
+      : null;
+    let linked = rootFill?.type === "solid" && rootFill.styleId === id;
+
+    for (let layerIndex = 0; layerIndex <= index; layerIndex += 1) {
+      const layer =
+        layerIndex === 0
+          ? rawOverrides.base
+          : rawOverrides.overrides[project.breakpoints[layerIndex]!.id];
+      const fill = layer?.fill;
+      if (fill === undefined) continue;
+      if (fill === null) {
+        // An explicit remove-fill override ends the color-link chain.
+        linked = false;
+        continue;
+      }
+      // A sparse fill (no `type`) inherits its resolved type from the wider
+      // layer; only an explicit non-solid type breaks the link.
+      const sparse = fill as {
+        type?: string;
+        color?: string;
+        opacity?: number;
+        styleId?: string | null;
+      };
+      if (sparse.type !== undefined && sparse.type !== "solid") {
+        linked = false;
+        continue;
+      }
+      if (sparse.styleId !== undefined) linked = sparse.styleId === id;
+      if (linked) {
+        sparse.color = color;
+        sparse.opacity = opacity;
+      }
+    }
+  }
+}
+
+function instanceReferencesColorStyle(instance: ComponentInstanceNode, id: ColorStyleId): boolean {
+  const overrides = instance.styleOverrides;
+  if (!overrides) return false;
+  return [overrides.base, ...Object.values(overrides.overrides)].some(
+    (layer) => (layer?.fill as { styleId?: string | null } | undefined)?.styleId === id,
+  );
 }
 
 /**
@@ -1426,18 +1635,26 @@ export function updateColorStyle(
       if (!override) continue;
 
       const fill = override.style?.fill;
-      if (fill) {
-        if (fill.type === "solid") {
-          // Any explicit id that is not this style ends the chain; a different
-          // style id must not be recolored by edits to this one.
-          if (fill.styleId !== undefined) fillLinked = fill.styleId === id;
-          if (fillLinked) {
-            fill.color = color;
-            fill.opacity = opacity;
-          }
-        } else {
-          // A gradient/image override replaces the fill, so the link stops here.
-          fillLinked = false;
+      if (fill === undefined) {
+        // No fill override: inherit the link state from the wider breakpoint.
+      } else if (fill === null) {
+        // An explicit remove-fill override ends the chain.
+        fillLinked = false;
+      } else if (fill.type !== undefined && fill.type !== "solid") {
+        // A gradient/image override replaces the fill, so the link stops here.
+        fillLinked = false;
+      } else {
+        // Any explicit id that is not this style ends the chain; a different
+        // style id must not be recolored by edits to this one.
+        const sparse = fill as {
+          color?: string;
+          opacity?: number;
+          styleId?: string | null;
+        };
+        if (sparse.styleId !== undefined) fillLinked = sparse.styleId === id;
+        if (fillLinked) {
+          sparse.color = color;
+          sparse.opacity = opacity;
         }
       }
 
@@ -1447,6 +1664,10 @@ export function updateColorStyle(
         }
         if (textLinked) override.text = { ...(override.text ?? {}), color };
       }
+    }
+
+    if (node.type === "componentInstance") {
+      propagateColorStyleToInstance(draft, node, id, color, opacity);
     }
   });
 }
@@ -1463,10 +1684,16 @@ export function removeColorStyle(draft: Draft<Project>, id: ColorStyleId): void 
 
   walkProjectNodes(draft, (node) => {
     forEachBoxLayer(node, (props) => {
-      const fill = props.style?.fill;
-      if (fill?.type === "solid" && fill.styleId === id) fill.styleId = null;
+      const fill = props.style?.fill as { styleId?: string | null } | null | undefined;
+      if (fill?.styleId === id) fill.styleId = null;
       if (node.type === "text" && props.colorStyleId === id) props.colorStyleId = null;
     });
+    if (node.type === "componentInstance") {
+      forEachInstanceStyleLayer(node, (layer) => {
+        const fill = layer.fill as { styleId?: string | null } | null | undefined;
+        if (fill?.styleId === id) fill.styleId = null;
+      });
+    }
   });
 }
 
@@ -1480,10 +1707,13 @@ export function countColorStyleUsages(project: Project, id: ColorStyleId): numbe
     walkNode(root, (node) => {
       let linked = false;
       forEachBoxLayer(node as Draft<SceneNode>, (props) => {
-        const fill = props.style?.fill;
-        if (fill?.type === "solid" && fill.styleId === id) linked = true;
+        const fill = props.style?.fill as { styleId?: string | null } | null | undefined;
+        if (fill?.styleId === id) linked = true;
         if (node.type === "text" && props.colorStyleId === id) linked = true;
       });
+      if (!linked && node.type === "componentInstance" && instanceReferencesColorStyle(node, id)) {
+        linked = true;
+      }
       if (linked) count += 1;
     });
   };

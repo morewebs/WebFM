@@ -17,14 +17,15 @@ import {
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { renderPageToHtml } from "./html";
 import {
   buildPageCss,
   nodeClassName,
   renderNode,
   resolveComponentInstance,
   resolveComponentScene,
+  resolveInstanceBox,
 } from "./index";
-import { renderPageToHtml } from "./html";
 import type { RenderOptions } from "./types";
 
 const EDITOR: RenderOptions = { breakpointId: "bp_desktop", mode: "editor" };
@@ -99,6 +100,14 @@ function ruleFor(css: string, className: string): string {
   expect(start).toBeGreaterThan(-1);
   const end = css.indexOf("}", start);
   return css.slice(start, end + 1);
+}
+
+/** The body of one media query, from its selector to the next block. */
+function mediaBlock(css: string, query: string): string {
+  const start = css.indexOf(query);
+  expect(start).toBeGreaterThan(-1);
+  const end = css.indexOf("@media", start + query.length);
+  return css.slice(start, end === -1 ? undefined : end);
 }
 
 function renderEditorNode(node: SceneNode, project: Project): string {
@@ -482,5 +491,136 @@ describe("resolveComponentScene", () => {
     expect(html).toContain(`class="${nodeClassName("node_component_root")}"`);
     expect(html).toContain(`class="${nodeClassName("node_label")}"`);
     expect(html).toContain('data-node-id="node_label"');
+  });
+});
+
+describe("instance style overrides", () => {
+  const OVERRIDES: ComponentInstanceNode["styleOverrides"] = {
+    base: {
+      fill: { type: "solid", color: "#ff0000", opacity: 1 },
+      radius: { topLeft: 12 },
+    },
+    overrides: {
+      bp_tablet: { fill: { type: "solid", color: "#0000ff", opacity: 1 } },
+    },
+  };
+
+  function instanceProject(): { project: Project; page: Page; instance: ComponentInstanceNode } {
+    const { project, page } = createTestProject();
+    project.components = [cardComponent()];
+    const instance = createComponentInstance({
+      id: "node_instance",
+      componentId: "component_card",
+      styleOverrides: OVERRIDES,
+      props: {
+        size: { width: { mode: "fixed", value: 320 }, height: { mode: "fixed", value: 180 } },
+        position: { x: 40, y: 60 },
+      },
+    });
+    page.root.children.push(instance);
+    return { project, page, instance };
+  }
+
+  it("merges the instance style over the master and keeps master layout", () => {
+    const { project, instance } = instanceProject();
+
+    const desktop = resolveInstanceBox(project, instance, "bp_desktop")!;
+    expect(desktop.style.fill).toEqual({
+      type: "solid",
+      color: "#ff0000",
+      opacity: 1,
+    });
+    expect(desktop.style.radius).toEqual({
+      topLeft: 12,
+      topRight: 0,
+      bottomRight: 0,
+      bottomLeft: 0,
+    });
+    // Layout stays with the master; placement stays on the instance.
+    expect(desktop.layout.mode).toBe("none");
+    expect(desktop.position).toEqual({ x: 40, y: 60 });
+    expect(desktop.size.width).toEqual({ mode: "fixed", value: 320 });
+    expect(desktop.size.height).toEqual({ mode: "fixed", value: 180 });
+
+    // The tablet override cascades into the phone breakpoint.
+    expect(resolveInstanceBox(project, instance, "bp_tablet")!.style.fill).toMatchObject({
+      color: "#0000ff",
+    });
+    expect(resolveInstanceBox(project, instance, "bp_phone")!.style.fill).toMatchObject({
+      color: "#0000ff",
+    });
+
+    // The master itself is untouched.
+    const masterFill = project.components[0]!.variants[0]!.root.responsive.base.style.fill;
+    expect(masterFill).toMatchObject({ type: "solid", color: "#123456" });
+  });
+
+  it("matches editor markup and publish CSS at every breakpoint", () => {
+    const { project, page } = instanceProject();
+
+    const editorDesktop = renderPageToHtml(project, page, EDITOR);
+    const editorTablet = renderPageToHtml(project, page, {
+      breakpointId: "bp_tablet",
+      mode: "editor",
+    });
+    expect(editorDesktop).toContain("background-color:#ff0000");
+    expect(editorDesktop).toContain("width:320px");
+    expect(editorTablet).toContain("background-color:#0000ff");
+
+    const css = buildPageCss(project, page, PUBLISH);
+    const baseRule = ruleFor(css, nodeClassName("node_instance"));
+    expect(baseRule).toContain("background-color: #ff0000");
+    expect(baseRule).toContain("width: 320px");
+
+    const tabletBlock = mediaBlock(css, "@media (max-width: 1199px)");
+    expect(ruleFor(tabletBlock, nodeClassName("node_instance"))).toContain(
+      "background-color: #0000ff",
+    );
+    const phoneBlock = mediaBlock(css, "@media (max-width: 809px)");
+    expect(ruleFor(phoneBlock, nodeClassName("node_instance"))).toContain(
+      "background-color: #0000ff",
+    );
+  });
+
+  it("keeps instances and variants independent", () => {
+    const { project, page } = createTestProject();
+    const component = cardComponent();
+    addVariant(component, "variant_alt", "Alt", "Alternate label");
+    project.components = [component];
+
+    page.root.children.push(
+      createComponentInstance({
+        id: "node_red",
+        componentId: "component_card",
+        styleOverrides: {
+          base: { fill: { type: "solid", color: "#ff0000", opacity: 1 } },
+          overrides: {},
+        },
+      }),
+      createComponentInstance({
+        id: "node_blue",
+        componentId: "component_card",
+        styleOverrides: {
+          base: { fill: { type: "solid", color: "#0000ff", opacity: 1 } },
+          overrides: {},
+        },
+      }),
+      createComponentInstance({
+        id: "node_inherit",
+        componentId: "component_card",
+      }),
+      createComponentInstance({
+        id: "node_alt",
+        componentId: "component_card",
+        variantId: "variant_alt",
+      }),
+    );
+
+    const css = buildPageCss(project, page, PUBLISH);
+
+    expect(ruleFor(css, nodeClassName("node_red"))).toContain("background-color: #ff0000");
+    expect(ruleFor(css, nodeClassName("node_blue"))).toContain("background-color: #0000ff");
+    expect(ruleFor(css, nodeClassName("node_inherit"))).toContain("background-color: #123456");
+    expect(ruleFor(css, nodeClassName("node_alt"))).toContain("background-color: #abcdef");
   });
 });

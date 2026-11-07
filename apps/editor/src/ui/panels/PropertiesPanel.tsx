@@ -29,6 +29,7 @@ import {
   findNode,
   findParent,
   type GradientStop,
+  hasInstanceStyleOverride,
   type ImageFit,
   type ImageNode,
   type ImageProps,
@@ -63,7 +64,7 @@ import {
   updateInteraction,
   type VariantId,
 } from "@webfm/model";
-import { FONT_OPTIONS, resolveFillStyles } from "@webfm/render";
+import { FONT_OPTIONS, resolveFillStyles, resolveInstanceBox } from "@webfm/render";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { activeSceneOf, useProjectStore } from "../../state/project-store";
 import { ensureFontLoaded } from "../fonts";
@@ -2190,14 +2191,28 @@ interface StylesSectionProps {
   nodeId: NodeId;
   style: StyleProps;
   project: Project;
+  /** Overrides the default `updateBox` write, e.g. for instance style overrides. */
+  writeStyle?: (patch: DeepPartial<StyleProps>) => void;
+  /** True when the layer has style overrides at the active breakpoint. */
+  overridden?: boolean;
+  /** Clears the active breakpoint's overrides; omitted for regular layers. */
+  onReset?: () => void;
 }
 
-function StylesSection({ nodeId, style, project }: StylesSectionProps) {
+function StylesSection({
+  nodeId,
+  style,
+  project,
+  writeStyle,
+  overridden = false,
+  onReset,
+}: StylesSectionProps) {
   const updateBox = useProjectStore((state) => state.updateBox);
   const [visibility, setVisibility] = useState<Record<string, StyleProperty[]>>({});
   const visible = visibility[nodeId] ?? DEFAULT_STYLE_PROPERTIES;
 
-  const write = (patch: DeepPartial<StyleProps>) => updateBox(nodeId, { style: patch });
+  const write =
+    writeStyle ?? ((patch: DeepPartial<StyleProps>) => updateBox(nodeId, { style: patch }));
   const resolveAssetUrl = (assetId: string) =>
     project.assets.find((asset) => asset.id === assetId)?.url ?? null;
 
@@ -2214,7 +2229,28 @@ function StylesSection({ nodeId, style, project }: StylesSectionProps) {
   return (
     <Section
       title="Styles"
-      add={<StylePropertiesMenu visible={visible} onToggle={toggleProperty} />}
+      add={
+        <span className="wfm-pp__styles-actions">
+          {overridden ? <span className="wfm-pp__override-badge">Overridden</span> : null}
+          {onReset ? (
+            <button
+              type="button"
+              className="wfm-remove wfm-pp__property-reset"
+              disabled={!overridden}
+              title={
+                overridden
+                  ? "Reset style overrides at this breakpoint"
+                  : "No style overrides at this breakpoint"
+              }
+              aria-label="Reset style overrides"
+              onClick={onReset}
+            >
+              <Icon name="close" size={12} />
+            </button>
+          ) : null}
+          <StylePropertiesMenu visible={visible} onToggle={toggleProperty} />
+        </span>
+      }
     >
       {visible.includes("fill") ? (
         <FillRow
@@ -2759,9 +2795,9 @@ function InstancePropertyRow({ component, node, property, target }: InstanceProp
 }
 
 /**
- * Inspector for a selected component instance. An instance inherits its
- * master's appearance, so only placement and the variant choice are editable
- * here; showing the style controls would be dishonest.
+ * Inspector for a selected component instance. The master owns layout and
+ * appearance; the instance owns placement, the variant choice and sparse style
+ * overrides layered over the master's resolved style.
  */
 interface InstanceInspectorProps {
   node: ComponentInstanceNode;
@@ -2773,6 +2809,8 @@ interface InstanceInspectorProps {
 function InstanceInspector({ node, project, breakpointId, target }: InstanceInspectorProps) {
   const setInstanceVariant = useProjectStore((state) => state.setInstanceVariant);
   const enterComponent = useProjectStore((state) => state.enterComponent);
+  const updateInstanceStyle = useProjectStore((state) => state.updateInstanceStyle);
+  const resetInstanceStyle = useProjectStore((state) => state.resetInstanceStyle);
 
   const component =
     project.components.find((candidate) => candidate.id === node.componentId) ?? null;
@@ -2784,6 +2822,9 @@ function InstanceInspector({ node, project, breakpointId, target }: InstanceInsp
       null)
     : null;
   const box = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints);
+  const effectiveBox = resolveInstanceBox(project, node, breakpointId);
+  const effectiveStyle = (effectiveBox ?? box).style;
+  const overridden = hasInstanceStyleOverride(node, breakpointId, project.breakpoints);
 
   const editMain = () => {
     if (!component) return;
@@ -2837,9 +2878,14 @@ function InstanceInspector({ node, project, breakpointId, target }: InstanceInsp
         </Section>
       ) : null}
       <EffectsSection node={node} target={target} />
-      <Section title="Overrides">
-        <p className="wfm-pp__note">Style and content overrides on instances are the next slice.</p>
-      </Section>
+      <StylesSection
+        nodeId={node.id}
+        style={effectiveStyle}
+        project={project}
+        writeStyle={(patch) => updateInstanceStyle(node.id, patch)}
+        overridden={overridden}
+        onReset={() => resetInstanceStyle(node.id)}
+      />
     </>
   );
 }

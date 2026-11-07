@@ -174,14 +174,19 @@ describe("interaction hover and tap effects", () => {
 });
 
 describe("interaction CSS scope", () => {
-  it("emits keyframes once even with multiple breakpoints, outside media queries", () => {
+  it("emits breakpoint-scoped keyframes and disjoint media blocks", () => {
     const card = createFrame({ id: "node_card" });
     card.interactions = [effect()];
     const css = cssFor([card]);
 
-    expect((css.match(/@keyframes/g) ?? []).length).toBe(1);
+    // The end state is baked from each breakpoint's resolved styles.
+    expect((css.match(/@keyframes/g) ?? []).length).toBe(3);
+    expect(css).toContain("@keyframes wfm-i_effect-appear {");
+    expect(css).toContain("@keyframes wfm-i_effect-appear-bp_tablet {");
+    expect(css).toContain("@keyframes wfm-i_effect-appear-bp_phone {");
     expect((css.match(/animation: wfm-i_effect-appear/g) ?? []).length).toBe(3);
-    expect(css.indexOf("@keyframes")).toBeLessThan(css.indexOf("@media (max-width: 1199px)"));
+    expect(css).toContain("@media (min-width: 1200px)");
+    expect(css.indexOf("@keyframes")).toBeLessThan(css.indexOf("@media (min-width: 1200px)"));
   });
 
   it("applies interactions to text and image entries", () => {
