@@ -6,6 +6,15 @@ export {
   resolveComponentScene,
 } from "./components";
 export { buildPageCss, rule, styleToCss } from "./css";
+export {
+  collectProjectFonts,
+  FONT_OPTIONS,
+  type FontCategory,
+  type FontOption,
+  googleFontHref,
+  isGoogleFont,
+  projectFontHrefs,
+} from "./fonts";
 export { PageView, renderNode } from "./render";
 export {
   type AssetUrlResolver,

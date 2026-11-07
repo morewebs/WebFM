@@ -61,15 +61,18 @@ import {
   updateInteraction,
   type VariantId,
 } from "@webfm/model";
-import { resolveFillStyles } from "@webfm/render";
+import { FONT_OPTIONS, resolveFillStyles } from "@webfm/render";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { activeSceneOf, useProjectStore } from "../../state/project-store";
+import { ensureFontLoaded } from "../fonts";
 import { Icon } from "../icons";
 import "./PropertiesPanel.css";
 
 /* ------------------------------------------------------------------ helpers */
 
-const FONT_FAMILIES = ["Inter", "Arial", "Georgia", "Times New Roman", "Courier New"];
+const SYSTEM_FONT_OPTIONS = FONT_OPTIONS.filter((option) => !option.google);
+const GOOGLE_FONT_OPTIONS = FONT_OPTIONS.filter((option) => option.google);
+const KNOWN_FONT_FAMILIES = new Set(FONT_OPTIONS.map((option) => option.family));
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 
 const SIZING_OPTIONS: Array<{ value: SizeMode; label: string }> = [
@@ -1432,13 +1435,29 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           className="wfm-select wfm-row__grow"
           value={text.fontFamily}
           aria-label="Font family"
-          onChange={(event) => updateText(node.id, { text: { fontFamily: event.target.value } })}
+          onChange={(event) => {
+            const family = event.target.value;
+            ensureFontLoaded(family);
+            updateText(node.id, { text: { fontFamily: family } });
+          }}
         >
-          {withCurrent(FONT_FAMILIES, text.fontFamily).map((family) => (
-            <option key={family} value={family}>
-              {family}
-            </option>
-          ))}
+          {KNOWN_FONT_FAMILIES.has(text.fontFamily) ? null : (
+            <option value={text.fontFamily}>{text.fontFamily}</option>
+          )}
+          <optgroup label="System">
+            {SYSTEM_FONT_OPTIONS.map((option) => (
+              <option key={option.family} value={option.family}>
+                {option.family}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Google Fonts">
+            {GOOGLE_FONT_OPTIONS.map((option) => (
+              <option key={option.family} value={option.family}>
+                {option.family}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
 
