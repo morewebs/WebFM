@@ -79,6 +79,7 @@ export function LayersPanel() {
   const editingComponent = useProjectStore((state) => state.editingComponent);
   const selection = useProjectStore((state) => state.selection);
   const select = useProjectStore((state) => state.select);
+  const selectMany = useProjectStore((state) => state.selectMany);
   const applyRecipe = useProjectStore((state) => state.applyRecipe);
   const renameComponent = useProjectStore((state) => state.renameComponent);
 
@@ -94,8 +95,36 @@ export function LayersPanel() {
 
   const draggedRef = useRef<NodeId | null>(null);
   const cancelRenameRef = useRef<NodeId | null>(null);
+  const treeRef = useRef<HTMLDivElement | null>(null);
+  const rangeAnchorRef = useRef<NodeId | null>(null);
 
   const selectionSet = useMemo(() => new Set(selection), [selection]);
+
+
+  // Canvas selection keeps the tree in sync: expand the ancestors of the
+  // selected layer and scroll its row into view, as Framer does.
+  useEffect(() => {
+    if (!root || selection.length === 0) return;
+    const ancestors = new Set<NodeId>();
+    for (const id of selection) {
+      let parent = findParent(root, id);
+      while (parent) {
+        ancestors.add(parent.id);
+        parent = findParent(root, parent.id);
+      }
+    }
+    setCollapsed((current) => {
+      if (![...ancestors].some((id) => current.has(id))) return current;
+      const next = new Set(current);
+      for (const id of ancestors) next.delete(id);
+      return next;
+    });
+    const selected = selection[0];
+    const row = selected
+      ? treeRef.current?.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(selected)}"]`)
+      : null;
+    row?.scrollIntoView({ block: "nearest" });
+  }, [selection, root]);
 
   // Stable ref callback: focus and select the text the moment rename mounts.
   const focusRename = useCallback((element: HTMLInputElement | null) => {
@@ -129,6 +158,18 @@ export function LayersPanel() {
     visit(root);
     return hits;
   }, [root, query]);
+  /** Rows currently visible in the tree, in rendered order (for Shift ranges). */
+  const visibleOrder = useMemo(() => {
+    const order: NodeId[] = [];
+    const visit = (node: SceneNode): void => {
+      order.push(node.id);
+      if (node.type !== "frame") return;
+      if (collapsed.has(node.id) && !matching) return;
+      for (const child of node.children) visit(child);
+    };
+    if (root) visit(root);
+    return order;
+  }, [root, collapsed, matching]);
 
   // Alt+L collapses every group (the shortcut registry leaves inputs alone).
   useEffect(() => {
@@ -382,12 +423,26 @@ export function LayersPanel() {
         role="treeitem"
         aria-selected={isSelected}
         aria-level={depth + 1}
+        data-layer-id={node.id}
         aria-expanded={expandable ? open : undefined}
         tabIndex={0}
         className={rowClass.join(" ")}
         style={{ paddingLeft: 8 + depth * 12 }}
         draggable={!isEditing && !isRoot && !node.locked}
-        onClick={(event) => select(node.id, event.shiftKey || event.metaKey || event.ctrlKey)}
+        onClick={(event) => {
+          // Shift selects a contiguous run of rows, as in Framer's layer list.
+          if (event.shiftKey && rangeAnchorRef.current) {
+            const from = visibleOrder.indexOf(rangeAnchorRef.current);
+            const to = visibleOrder.indexOf(node.id);
+            if (from >= 0 && to >= 0) {
+              const [start, end] = from < to ? [from, to] : [to, from];
+              selectMany(visibleOrder.slice(start, end + 1));
+              return;
+            }
+          }
+          select(node.id, event.metaKey || event.ctrlKey);
+          rangeAnchorRef.current = node.id;
+        }}
         onDoubleClick={() => handleRowDoubleClick(node)}
         onPointerEnter={() => {
           if (isRoot || node.locked) return;
@@ -532,7 +587,7 @@ export function LayersPanel() {
 
       <div className="wfm-layers__divider" />
 
-      <div className="wfm-layer-tree" role="tree" aria-label="Layers">
+      <div className="wfm-layer-tree" role="tree" aria-label="Layers" ref={treeRef}>
         {root ? renderNode(root, 0) : null}
       </div>
 
