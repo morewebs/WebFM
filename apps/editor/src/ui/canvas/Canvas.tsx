@@ -1891,6 +1891,7 @@ export function Canvas() {
   const hoverRect =
     hoveredNode &&
     hoveredNode.id !== scene.root.id &&
+    hoveredNode.id !== editing?.nodeId &&
     !hoveredNode.locked &&
     !selection.includes(hoveredNode.id)
       ? (rects.get(hoveredNode.id) ?? null)
@@ -2113,6 +2114,9 @@ export function Canvas() {
         ) : null}
 
         {selection.map((nodeId) => {
+          // While a text layer is open in the inline editor its own blue box is
+          // the selection chrome; Framer hides the resize handles then.
+          if (editing?.nodeId === nodeId) return null;
           const rect = rects.get(nodeId);
           if (!rect || rect.width <= 0 || rect.height <= 0) return null;
           const withHandles = showHandles && nodeId === singleSelectedId;
