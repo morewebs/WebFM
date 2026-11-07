@@ -59,6 +59,7 @@ import {
   setInstancePropertyValue,
   type TextAlign,
   type TextProps,
+  textStyleValuesFromText,
   updateInteraction,
   type VariantId,
 } from "@webfm/model";
@@ -1446,6 +1447,7 @@ interface TypographySectionProps {
 
 function TypographySection({ node, breakpointId, breakpoints }: TypographySectionProps) {
   const updateText = useProjectStore((state) => state.updateText);
+  const applyTextStyle = useProjectStore((state) => state.applyTextStyle);
   const project = useProjectStore((state) => state.project);
 
   if (node.type !== "text") {
@@ -1487,14 +1489,68 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
   const props = resolveNodeProps<BoxProps & TextProps>(node, breakpointId, breakpoints);
   const text = props.text;
   const colorStyles = project?.colorStyles ?? [];
+  const textStyles = project?.textStyles ?? [];
   const linkedColorStyle = props.colorStyleId
     ? colorStyles.find((style) => style.id === props.colorStyleId)
+    : undefined;
+  const linkedTextStyle = props.textStyleId
+    ? textStyles.find((style) => style.id === props.textStyleId)
     : undefined;
   const lineHeightAuto = text.lineHeight === "auto";
   const lineHeightValue = text.lineHeight === "auto" ? null : text.lineHeight;
 
+  // Detaching freezes the resolved typography at the active breakpoint, like
+  // the color Detach, so later style edits cannot flow through the base.
+  const detachTextStyle = (): void => {
+    updateText(node.id, {
+      text: textStyleValuesFromText(text),
+      textStyleId: null,
+    });
+  };
+
   return (
     <Section title="Typography">
+      <div className="wfm-row">
+        <span className="wfm-row__label">Text style</span>
+        <select
+          className="wfm-select wfm-row__grow"
+          value={linkedTextStyle?.id ?? ""}
+          aria-label="Text style"
+          onChange={(event) => {
+            const nextId = event.target.value;
+            if (nextId === "") {
+              detachTextStyle();
+            } else {
+              const style = textStyles.find((candidate) => candidate.id === nextId);
+              if (style) ensureFontLoaded(style.values.fontFamily);
+              applyTextStyle(nextId);
+            }
+          }}
+        >
+          <option value="">None</option>
+          {textStyles.map((style) => (
+            <option key={style.id} value={style.id}>
+              {style.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {props.textStyleId ? (
+        <div className="wfm-row">
+          <span className="wfm-row__label" />
+          <span className="wfm-pp__linked-color">
+            <Icon name="link" size={11} />
+            <span className="wfm-pp__value-text">
+              {linkedTextStyle?.name ?? "Linked text style"}
+            </span>
+            <button type="button" className="wfm-pp__detach" onClick={detachTextStyle}>
+              Detach
+            </button>
+          </span>
+        </div>
+      ) : null}
+
       <div className="wfm-row">
         <span className="wfm-row__label">Font</span>
         <select
@@ -1504,7 +1560,7 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           onChange={(event) => {
             const family = event.target.value;
             ensureFontLoaded(family);
-            updateText(node.id, { text: { fontFamily: family } });
+            updateText(node.id, { text: { fontFamily: family }, textStyleId: null });
           }}
         >
           {KNOWN_FONT_FAMILIES.has(text.fontFamily) ? null : (
@@ -1533,7 +1589,9 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           value={text.fontSize}
           min={1}
           max={512}
-          onCommit={(value) => updateText(node.id, { text: { fontSize: value } })}
+          onCommit={(value) =>
+            updateText(node.id, { text: { fontSize: value }, textStyleId: null })
+          }
           ariaLabel="Font size"
         />
         <span className="wfm-pp__unit">PX</span>
@@ -1543,7 +1601,10 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
             className="wfm-stepper__button"
             aria-label="Decrease font size"
             onClick={() =>
-              updateText(node.id, { text: { fontSize: Math.max(1, text.fontSize - 1) } })
+              updateText(node.id, {
+                text: { fontSize: Math.max(1, text.fontSize - 1) },
+                textStyleId: null,
+              })
             }
           >
             <Icon name="minus" size={14} />
@@ -1552,7 +1613,9 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
             type="button"
             className="wfm-stepper__button"
             aria-label="Increase font size"
-            onClick={() => updateText(node.id, { text: { fontSize: text.fontSize + 1 } })}
+            onClick={() =>
+              updateText(node.id, { text: { fontSize: text.fontSize + 1 }, textStyleId: null })
+            }
           >
             <Icon name="plus" size={14} />
           </button>
@@ -1566,7 +1629,10 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           value={text.fontWeight}
           aria-label="Font weight"
           onChange={(event) =>
-            updateText(node.id, { text: { fontWeight: Number(event.target.value) } })
+            updateText(node.id, {
+              text: { fontWeight: Number(event.target.value) },
+              textStyleId: null,
+            })
           }
         >
           {withCurrent(FONT_WEIGHTS, text.fontWeight).map((weight) => (
@@ -1585,10 +1651,11 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           aria-label="Line height unit"
           onChange={(event) => {
             if (event.target.value === "auto") {
-              updateText(node.id, { text: { lineHeight: "auto" } });
+              updateText(node.id, { text: { lineHeight: "auto" }, textStyleId: null });
             } else {
               updateText(node.id, {
                 text: { lineHeight: lineHeightValue ?? Math.round(text.fontSize * 1.5) },
+                textStyleId: null,
               });
             }
           }}
@@ -1600,7 +1667,9 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           <NumberField
             value={lineHeightValue}
             min={1}
-            onCommit={(value) => updateText(node.id, { text: { lineHeight: value } })}
+            onCommit={(value) =>
+              updateText(node.id, { text: { lineHeight: value }, textStyleId: null })
+            }
             ariaLabel="Line height"
             className="wfm-row__grow"
           />
@@ -1611,7 +1680,9 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
         <span className="wfm-row__label">Letter spacing</span>
         <NumberField
           value={text.letterSpacing}
-          onCommit={(value) => updateText(node.id, { text: { letterSpacing: value } })}
+          onCommit={(value) =>
+            updateText(node.id, { text: { letterSpacing: value }, textStyleId: null })
+          }
           ariaLabel="Letter spacing"
           className="wfm-row__grow"
         />
@@ -1630,12 +1701,15 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
               updateText(node.id, {
                 text: { color: event.target.value },
                 colorStyleId: null,
+                textStyleId: null,
               })
             }
           />
           <HexField
             color={text.color}
-            onCommit={(color) => updateText(node.id, { text: { color }, colorStyleId: null })}
+            onCommit={(color) =>
+              updateText(node.id, { text: { color }, colorStyleId: null, textStyleId: null })
+            }
             ariaLabel="Text color hex"
           />
         </span>
@@ -1706,7 +1780,7 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
           value={text.align}
           aria-label="Text alignment"
           onChange={(event) =>
-            updateText(node.id, { text: { align: event.target.value as TextAlign } })
+            updateText(node.id, { text: { align: event.target.value as TextAlign }, textStyleId: null })
           }
         >
           {TEXT_ALIGN_OPTIONS.map((option) => (
@@ -1726,7 +1800,9 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
             aria-pressed={text.italic}
             aria-label="Italic"
             title="Italic"
-            onClick={() => updateText(node.id, { text: { italic: !text.italic } })}
+            onClick={() =>
+              updateText(node.id, { text: { italic: !text.italic }, textStyleId: null })
+            }
           >
             I
           </button>
@@ -1743,6 +1819,7 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
                 text: {
                   textDecoration: text.textDecoration === "underline" ? "none" : "underline",
                 },
+                textStyleId: null,
               })
             }
           >
@@ -1761,6 +1838,7 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
                 text: {
                   textTransform: text.textTransform === "uppercase" ? "none" : "uppercase",
                 },
+                textStyleId: null,
               })
             }
           >

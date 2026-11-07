@@ -103,24 +103,31 @@ function canonicalFamily(family: string): string {
 /**
  * Every Google font used by text nodes in the project, in first-seen order.
  *
- * Scans each page and every variant of every component. Only the base text
- * properties are read: text styles and per-breakpoint overrides that change
- * the family are not linked yet.
+ * Scans each page and every variant of every component, including breakpoint
+ * overrides that change the family. Saved text styles are not scanned: only
+ * the denormalized values on nodes can render.
  */
 export function collectProjectFonts(project: Project): string[] {
   const families: string[] = [];
   const seen = new Set<string>();
 
+  const add = (family: string): void => {
+    if (!isGoogleFont(family)) return;
+    const canonical = canonicalFamily(family);
+    const key = canonical.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    families.push(canonical);
+  };
+
   const scan = (root: SceneNode): void => {
     walkNode(root, (node) => {
       if (node.type !== "text") return;
-      const family = node.responsive.base.text.fontFamily;
-      if (!isGoogleFont(family)) return;
-      const canonical = canonicalFamily(family);
-      const key = canonical.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      families.push(canonical);
+      add(node.responsive.base.text.fontFamily);
+      for (const override of Object.values(node.responsive.overrides)) {
+        const family = override?.text?.fontFamily;
+        if (family !== undefined) add(family);
+      }
     });
   };
 

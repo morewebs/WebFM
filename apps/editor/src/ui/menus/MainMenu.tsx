@@ -146,18 +146,20 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
     if (!selectedText || !textProps) return;
     updateText(selectedText.id, {
       text: { fontWeight: textProps.fontWeight >= 600 ? 400 : 700 },
+      textStyleId: null,
     });
   };
 
   const toggleItalic = (): void => {
     if (!selectedText || !textProps) return;
-    updateText(selectedText.id, { text: { italic: !textProps.italic } });
+    updateText(selectedText.id, { text: { italic: !textProps.italic }, textStyleId: null });
   };
 
   const toggleUnderline = (): void => {
     if (!selectedText || !textProps) return;
     updateText(selectedText.id, {
       text: { textDecoration: textProps.textDecoration === "underline" ? "none" : "underline" },
+      textStyleId: null,
     });
   };
 

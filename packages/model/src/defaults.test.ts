@@ -5,10 +5,11 @@ import {
   createText,
   DEFAULT_BREAKPOINTS,
   mergeDeep,
+  normalizeProject,
   resolveNodeProps,
 } from "./defaults";
 import { findNode, findParent, indexOfNode, isSelfOrDescendant, nodePath } from "./tree";
-import { type Fill, SCHEMA_VERSION } from "./types";
+import { type Fill, type Project, SCHEMA_VERSION } from "./types";
 
 function solid(fill: Fill | null): string | null {
   return fill && fill.type === "solid" ? fill.color : null;
@@ -24,6 +25,7 @@ describe("createProject", () => {
     expect(project.breakpoints).toEqual(DEFAULT_BREAKPOINTS);
     expect(project.pages).toHaveLength(1);
     expect(project.colorStyles).toEqual([]);
+    expect(project.textStyles).toEqual([]);
 
     const page = project.pages[0]!;
     expect(page.path).toBe("/");
@@ -92,6 +94,20 @@ describe("responsive resolution", () => {
     expect(tablet.text.color).toBe("#333333");
   });
 
+  it("keeps text style links and text partials when overrides merge", () => {
+    const text = createText({ props: { textStyleId: "text_1" } });
+    text.responsive.overrides.bp_tablet = {
+      textStyleId: "text_1",
+      text: { fontSize: 22 },
+    };
+    text.responsive.overrides.bp_phone = { text: { color: "#333333" } };
+
+    const phone = resolveNodeProps(text, "bp_phone", DEFAULT_BREAKPOINTS);
+    expect(phone.textStyleId).toBe("text_1");
+    expect(phone.text.fontSize).toBe(22);
+    expect(phone.text.color).toBe("#333333");
+  });
+
   it("replaces arrays instead of concatenating them", () => {
     const merged = mergeDeep(
       { shadows: [{ x: 0, y: 0, blur: 1, spread: 0, color: "#000", inset: false }] },
@@ -119,6 +135,20 @@ describe("responsive resolution", () => {
     expect(layout.gap).toBe(10);
     expect(layout.padding).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
     expect(layout.grid).toEqual({ columns: 2, rows: 2, columnGap: 10, rowGap: 10 });
+  });
+});
+
+describe("normalizeProject", () => {
+  it("adds missing style collections to old documents", () => {
+    const project = createProject();
+    const legacy: Partial<Project> = { ...project };
+    delete legacy.colorStyles;
+    delete legacy.textStyles;
+
+    const normalized = normalizeProject(legacy as Project);
+
+    expect(normalized.colorStyles).toEqual([]);
+    expect(normalized.textStyles).toEqual([]);
   });
 });
 

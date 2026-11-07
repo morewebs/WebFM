@@ -221,6 +221,58 @@ describe("buildPageCss", () => {
     expect(css).not.toContain("#ff0000");
   });
 
+  it("publishes denormalized linked text styles without a project lookup", () => {
+    const title = createText({ id: "node_linked_heading", content: "Heading" });
+    title.responsive.base.textStyleId = "text_1";
+    Object.assign(title.responsive.base.text, {
+      fontFamily: "Poppins",
+      fontSize: 32,
+      fontWeight: 700,
+      lineHeight: 40,
+      letterSpacing: 1,
+      color: "#123456",
+      align: "center",
+      textTransform: "uppercase",
+      textDecoration: "underline",
+      italic: true,
+    });
+
+    const { project, page } = projectWith([title]);
+    // Rendering must use the denormalized typography, never the style record.
+    project.textStyles = [
+      {
+        id: "text_1",
+        name: "Display",
+        values: {
+          fontFamily: "Inter",
+          fontSize: 12,
+          fontWeight: 400,
+          lineHeight: "auto",
+          letterSpacing: 0,
+          color: "#ff0000",
+          align: "left",
+          textTransform: "none",
+          textDecoration: "none",
+          italic: false,
+        },
+      },
+    ];
+
+    const css = buildPageCss(project, page, PUBLISH);
+
+    expect(css).toContain("font-family: Poppins");
+    expect(css).toContain("font-size: 32px");
+    expect(css).toContain("font-weight: 700");
+    expect(css).toContain("line-height: 40px");
+    expect(css).toContain("letter-spacing: 1px");
+    expect(css).toContain("color: #123456");
+    expect(css).toContain("text-align: center");
+    expect(css).toContain("text-transform: uppercase");
+    expect(css).toContain("text-decoration: underline");
+    expect(css).toContain("font-style: italic");
+    expect(css).not.toContain("#ff0000");
+  });
+
   it("emits text and image child classes", () => {
     const headline = createText({ id: "node_title", content: "Title", name: "Title" });
     const image = createImage({

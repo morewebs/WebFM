@@ -5,6 +5,7 @@ import {
   type FrameNode,
   findNode,
   type Project,
+  resolveNodeProps,
   type TextNode,
 } from "@webfm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1148,5 +1149,269 @@ describe("color styles", () => {
     ).toBe(true);
     expect(store.getState().history?.past).toHaveLength(2);
     expect(JSON.stringify(store.getState().project)).toBe(applied);
+  });
+});
+
+describe("text styles", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("creates a style from the selected text layer, links it and uses unique names", async () => {
+    const { project } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(
+      createText({
+        id: "node_title",
+        content: "Title",
+        props: {
+          text: { fontFamily: "Poppins", fontSize: 30, fontWeight: 700, color: "#abcdef" },
+          colorStyleId: "color_old",
+        },
+      }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select("node_title");
+    const first = store.getState().createTextStyle();
+    expect(first).not.toBeNull();
+    expect(store.getState().project?.textStyles).toHaveLength(1);
+    expect(store.getState().project?.textStyles[0]).toMatchObject({
+      id: first,
+      name: "Text style 1",
+      values: { fontFamily: "Poppins", fontSize: 30, fontWeight: 700, color: "#abcdef" },
+    });
+    const linked = textNode(store.getState().project, "node_title");
+    expect(linked.responsive.base.textStyleId).toBe(first);
+    expect(linked.responsive.base.colorStyleId).toBeNull();
+    expect(linked.responsive.base.text).toMatchObject({ fontFamily: "Poppins", fontSize: 30 });
+    expect(store.getState().history?.past).toHaveLength(1);
+
+    store.getState().clearSelection();
+    const second = store.getState().createTextStyle();
+    expect(store.getState().project?.textStyles[1]).toMatchObject({
+      id: second,
+      name: "Text style 2",
+      values: { fontFamily: "Inter", fontSize: 16 },
+    });
+    expect(store.getState().history?.past).toHaveLength(2);
+  });
+
+  it("applies to every selected text layer, keeps the text style through a color style, and undoes", async () => {
+    const { project } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(
+      createText({ id: "node_one", content: "One" }),
+      createText({ id: "node_two", content: "Two" }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createTextStyle(false);
+    if (!styleId) throw new Error("Expected a text style");
+    store.getState().updateTextStyle(styleId, {
+      values: { fontFamily: "Poppins", fontSize: 28, color: "#ff0000" },
+    });
+    const beforeApply = store.getState().history?.past.length ?? 0;
+
+    store.getState().selectMany(["node_one", "node_two"]);
+    expect(store.getState().applyTextStyle(styleId)).toBe(true);
+
+    for (const id of ["node_one", "node_two"]) {
+      const text = textNode(store.getState().project, id);
+      expect(text.responsive.base.textStyleId).toBe(styleId);
+      expect(text.responsive.base.text).toMatchObject({
+        fontFamily: "Poppins",
+        fontSize: 28,
+        color: "#ff0000",
+      });
+    }
+    expect(store.getState().history?.past).toHaveLength(beforeApply + 1);
+
+    // Applying a color style afterwards keeps the text-style link.
+    const colorId = store.getState().createColorStyle(false);
+    if (!colorId) throw new Error("Expected a color style");
+    store.getState().select("node_one");
+    expect(store.getState().applyColorStyle(colorId)).toBe(true);
+    const recolored = textNode(store.getState().project, "node_one");
+    expect(recolored.responsive.base.textStyleId).toBe(styleId);
+    expect(recolored.responsive.base.colorStyleId).toBe(colorId);
+
+    store.getState().undo();
+    store.getState().undo();
+    const undone = textNode(store.getState().project, "node_one");
+    expect(undone.responsive.base.textStyleId).toBe(styleId);
+    expect(undone.responsive.base.colorStyleId).toBeNull();
+  });
+
+  it("rejects non-text selections and skips history for an unchanged apply", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createTextStyle(false);
+    if (!styleId) throw new Error("Expected a text style");
+
+    store.getState().select(childId);
+    expect(store.getState().applyTextStyle(styleId)).toBe(false);
+    expect(store.getState().error).toMatch(/Select text layers/);
+
+    store.getState().select("node_label");
+    expect(store.getState().applyTextStyle(styleId)).toBe(true);
+    const appliedProject = JSON.stringify(store.getState().project);
+    const appliedHistory = store.getState().history?.past.length;
+
+    // Re-applying the same style and values adds no undo step.
+    expect(store.getState().applyTextStyle(styleId)).toBe(true);
+    expect(store.getState().history?.past.length).toBe(appliedHistory);
+    expect(JSON.stringify(store.getState().project)).toBe(appliedProject);
+
+    const style = store.getState().project?.textStyles[0];
+    if (!style) throw new Error("Expected the text style");
+    expect(
+      store.getState().updateTextStyle(styleId, {
+        name: style.name,
+        values: { ...style.values },
+      }),
+    ).toBe(true);
+    expect(store.getState().history?.past.length).toBe(appliedHistory);
+    expect(JSON.stringify(store.getState().project)).toBe(appliedProject);
+  });
+
+  it("updates a style, propagates typography, and undoes the propagation", async () => {
+    const { project } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createTextStyle(false);
+    if (!styleId) throw new Error("Expected a text style");
+    store.getState().select("node_label");
+    store.getState().applyTextStyle(styleId);
+
+    expect(
+      store.getState().updateTextStyle(styleId, {
+        name: "Display",
+        values: { fontSize: 42, color: "#123456", italic: true },
+      }),
+    ).toBe(true);
+
+    expect(store.getState().project?.textStyles[0]).toMatchObject({
+      name: "Display",
+      values: { fontSize: 42, color: "#123456", italic: true },
+    });
+    const label = textNode(store.getState().project, "node_label");
+    expect(label.responsive.base.text).toMatchObject({
+      fontSize: 42,
+      color: "#123456",
+      italic: true,
+    });
+
+    store.getState().undo();
+
+    expect(store.getState().project?.textStyles[0]).toMatchObject({
+      name: "Text style 1",
+      values: { fontSize: 16, color: "#000000", italic: false },
+    });
+    const undone = textNode(store.getState().project, "node_label");
+    expect(undone.responsive.base.text).toMatchObject({
+      fontSize: 16,
+      color: "#000000",
+      italic: false,
+    });
+    expect(undone.responsive.base.textStyleId).toBe(styleId);
+  });
+
+  it("detaches on manual typography and color edits", async () => {
+    const { project } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createTextStyle(false);
+    if (!styleId) throw new Error("Expected a text style");
+    store.getState().select("node_label");
+    store.getState().applyTextStyle(styleId);
+
+    store.getState().updateText("node_label", { text: { fontSize: 48 } });
+    const typed = textNode(store.getState().project, "node_label");
+    expect(typed.responsive.base.textStyleId).toBeNull();
+    expect(typed.responsive.base.text.fontSize).toBe(48);
+
+    store.getState().applyTextStyle(styleId);
+    store.getState().updateText("node_label", { text: { color: "#00ff00" } });
+    const recolored = textNode(store.getState().project, "node_label");
+    expect(recolored.responsive.base.textStyleId).toBeNull();
+    expect(recolored.responsive.base.colorStyleId).toBeNull();
+    expect(recolored.responsive.base.text.color).toBe("#00ff00");
+  });
+
+  it("removes a style, detaches usages and keeps their typography", async () => {
+    const { project } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createTextStyle(false);
+    if (!styleId) throw new Error("Expected a text style");
+    store.getState().updateTextStyle(styleId, { values: { fontSize: 36 } });
+    store.getState().select("node_label");
+    store.getState().applyTextStyle(styleId);
+
+    store.getState().removeTextStyle(styleId);
+
+    expect(store.getState().project?.textStyles).toHaveLength(0);
+    const text = textNode(store.getState().project, "node_label");
+    expect(text.responsive.base.textStyleId).toBeNull();
+    expect(text.responsive.base.text.fontSize).toBe(36);
+  });
+
+  it("freezes resolved typography when a manual edit detaches at a smaller breakpoint", async () => {
+    const { project } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const initialFamily = textNode(project, "node_label").responsive.base.text.fontFamily;
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select("node_label");
+    const styleId = store.getState().createTextStyle();
+    if (!styleId) throw new Error("Expected a text style");
+
+    store.getState().setActiveBreakpoint("bp_phone");
+    // The Typography controls pass textStyleId: null explicitly on manual edits.
+    store.getState().updateText("node_label", { text: { fontSize: 24 }, textStyleId: null });
+
+    const detached = textNode(store.getState().project, "node_label");
+    const phoneOverride = detached.responsive.overrides.bp_phone;
+    expect(phoneOverride?.textStyleId).toBeNull();
+    expect(phoneOverride?.text).toMatchObject({ fontSize: 24, fontFamily: initialFamily });
+
+    // Editing the style afterwards must not leak through the linked base.
+    store.getState().updateTextStyle(styleId, { values: { fontFamily: "Poppins" } });
+    const projectAfter = store.getState().project!;
+    const nodeAfter = textNode(projectAfter, "node_label");
+    expect(nodeAfter.responsive.base.text.fontFamily).toBe("Poppins");
+    const resolved = resolveNodeProps(nodeAfter, "bp_phone", projectAfter.breakpoints);
+    expect(resolved.textStyleId).toBeNull();
+    expect(resolved.text.fontFamily).toBe(initialFamily);
+    expect(resolved.text.fontSize).toBe(24);
   });
 });

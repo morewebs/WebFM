@@ -13,12 +13,18 @@ import {
   type Asset,
   type ColorStyle,
   countColorStyleUsages,
+  countTextStyleUsages,
   createImage,
   findComponentInstances,
+  type TextAlign,
+  type TextDecoration,
+  type TextStyle,
+  type TextTransform,
 } from "@webfm/model";
-import { resolveFillStyles } from "@webfm/render";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FONT_OPTIONS, resolveFillStyles } from "@webfm/render";
+import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../../state/project-store";
+import { ensureFontLoaded } from "../fonts";
 import { Icon } from "../icons";
 import "./AssetsPanel.css";
 
@@ -40,6 +46,68 @@ function colorInputValue(color: string): string {
   return "#000000";
 }
 
+const SYSTEM_FONT_OPTIONS = FONT_OPTIONS.filter((option) => !option.google);
+const GOOGLE_FONT_OPTIONS = FONT_OPTIONS.filter((option) => option.google);
+const KNOWN_FONT_FAMILIES = new Set(FONT_OPTIONS.map((option) => option.family));
+const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+const TEXT_ALIGN_OPTIONS: Array<{ value: TextAlign; label: string }> = [
+  { value: "left", label: "Left" },
+  { value: "center", label: "Center" },
+  { value: "right", label: "Right" },
+  { value: "justify", label: "Justify" },
+];
+const TEXT_TRANSFORM_OPTIONS: Array<{ value: TextTransform; label: string }> = [
+  { value: "none", label: "None" },
+  { value: "uppercase", label: "Uppercase" },
+  { value: "lowercase", label: "Lowercase" },
+  { value: "capitalize", label: "Capitalize" },
+];
+const TEXT_DECORATION_OPTIONS: Array<{ value: TextDecoration; label: string }> = [
+  { value: "none", label: "None" },
+  { value: "underline", label: "Underline" },
+  { value: "line-through", label: "Strikethrough" },
+];
+
+/** Inline-editor draft: numeric fields stay strings so empty input is invalid. */
+interface TextStyleDraft {
+  name: string;
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: number;
+  lineHeightAuto: boolean;
+  lineHeight: string;
+  letterSpacing: string;
+  color: string;
+  align: TextAlign;
+  textTransform: TextTransform;
+  textDecoration: TextDecoration;
+  italic: boolean;
+}
+
+function draftFromStyle(style: TextStyle): TextStyleDraft {
+  const values = style.values;
+  return {
+    name: style.name,
+    fontFamily: values.fontFamily,
+    fontSize: String(values.fontSize),
+    fontWeight: values.fontWeight,
+    lineHeightAuto: values.lineHeight === "auto",
+    lineHeight: values.lineHeight === "auto" ? "" : String(values.lineHeight),
+    letterSpacing: String(values.letterSpacing),
+    color: colorInputValue(values.color),
+    align: values.align,
+    textTransform: values.textTransform,
+    textDecoration: values.textDecoration,
+    italic: values.italic,
+  };
+}
+
+/** A CSS stack for the "Aa" preview in the card. */
+function previewFontFamily(family: string): string {
+  const clean = family.replace(/"/g, "").trim();
+  return clean.length > 0 ? `"${clean}", sans-serif` : "sans-serif";
+}
+
 export function AssetsPanel() {
   const project = useProjectStore((state) => state.project);
   const editingComponent = useProjectStore((state) => state.editingComponent);
@@ -51,6 +119,10 @@ export function AssetsPanel() {
   const updateColorStyle = useProjectStore((state) => state.updateColorStyle);
   const removeColorStyle = useProjectStore((state) => state.removeColorStyle);
   const applyColorStyle = useProjectStore((state) => state.applyColorStyle);
+  const createTextStyle = useProjectStore((state) => state.createTextStyle);
+  const updateTextStyle = useProjectStore((state) => state.updateTextStyle);
+  const removeTextStyle = useProjectStore((state) => state.removeTextStyle);
+  const applyTextStyle = useProjectStore((state) => state.applyTextStyle);
 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,11 +131,15 @@ export function AssetsPanel() {
   const [editingColorName, setEditingColorName] = useState("");
   const [editingColorValue, setEditingColorValue] = useState("#000000");
   const [editingColorOpacity, setEditingColorOpacity] = useState("100");
+  const [textError, setTextError] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingTextDraft, setEditingTextDraft] = useState<TextStyleDraft | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const assets = project?.assets ?? [];
   const components = project?.components ?? [];
   const colorStyles = project?.colorStyles ?? [];
+  const textStyles = project?.textStyles ?? [];
   const componentMode = editingComponent !== null;
 
   // An open inline editor follows the saved style. Undo/redo or an external
@@ -143,6 +219,128 @@ export function AssetsPanel() {
     }
     setEditingColorId(null);
     setColorError(null);
+  };
+
+  // The text-style editor follows the saved style the same way. Re-seed on
+  // undo/redo or external edits; close when the style is deleted.
+  const editingTextStyle = editingTextId
+    ? textStyles.find((style) => style.id === editingTextId)
+    : undefined;
+  // Depend on the saved values, not object identity: an autosave response
+  // replaces every project object and must not wipe an unsaved draft.
+  const editingTextSignature = editingTextStyle
+    ? JSON.stringify([editingTextStyle.name, editingTextStyle.values])
+    : null;
+  useEffect(() => {
+    if (!editingTextId) return;
+    const style = useProjectStore
+      .getState()
+      .project?.textStyles.find((candidate) => candidate.id === editingTextId);
+    if (!style) {
+      setEditingTextId(null);
+      setEditingTextDraft(null);
+      setTextError(null);
+      return;
+    }
+    setEditingTextDraft(draftFromStyle(style));
+    setTextError(null);
+  }, [editingTextId, editingTextSignature]);
+
+  const textUsageCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!project) return counts;
+    for (const style of project.textStyles) {
+      counts.set(style.id, countTextStyleUsages(project, style.id));
+    }
+    return counts;
+  }, [project]);
+
+  // Saved styles render in the Assets panel even when no layer uses them yet,
+  // so their Google fonts must load on open too.
+  const textStyleFontKey = textStyles
+    .map((style) => style.values.fontFamily.trim().toLowerCase())
+    .join("|");
+  useEffect(() => {
+    const styles = useProjectStore.getState().project?.textStyles ?? [];
+    for (const style of styles) ensureFontLoaded(style.values.fontFamily);
+  }, [textStyleFontKey]);
+
+  const startEditText = (style: TextStyle): void => {
+    ensureFontLoaded(style.values.fontFamily);
+    setEditingTextId(style.id);
+    setEditingTextDraft(draftFromStyle(style));
+    setTextError(null);
+  };
+
+  const cancelEditText = (): void => {
+    setEditingTextId(null);
+    setEditingTextDraft(null);
+    setTextError(null);
+  };
+
+  const commitEditText = (): void => {
+    if (!editingTextId || !editingTextDraft) return;
+    const draft = editingTextDraft;
+    const name = draft.name.trim();
+    if (name.length === 0) {
+      setTextError("Text style name cannot be empty.");
+      return;
+    }
+    const fontSize = Number(draft.fontSize.trim());
+    if (draft.fontSize.trim().length === 0 || !Number.isFinite(fontSize) || fontSize <= 0) {
+      setTextError("Font size must be a positive number.");
+      return;
+    }
+    const lineHeight = draft.lineHeightAuto ? "auto" : Number(draft.lineHeight.trim());
+    if (
+      lineHeight !== "auto" &&
+      (draft.lineHeight.trim().length === 0 || !Number.isFinite(lineHeight) || lineHeight < 0)
+    ) {
+      setTextError('Line height must be "auto" or a non-negative number.');
+      return;
+    }
+    const letterSpacing = Number(draft.letterSpacing.trim());
+    if (draft.letterSpacing.trim().length === 0 || !Number.isFinite(letterSpacing)) {
+      setTextError("Letter spacing must be a number.");
+      return;
+    }
+    if (
+      !updateTextStyle(editingTextId, {
+        name,
+        values: {
+          fontFamily: draft.fontFamily,
+          fontSize,
+          fontWeight: draft.fontWeight,
+          lineHeight,
+          letterSpacing,
+          color: draft.color,
+          align: draft.align,
+          textTransform: draft.textTransform,
+          textDecoration: draft.textDecoration,
+          italic: draft.italic,
+        },
+      })
+    ) {
+      setTextError(useProjectStore.getState().error ?? "Could not update the text style.");
+      return;
+    }
+    setEditingTextId(null);
+    setEditingTextDraft(null);
+    setTextError(null);
+  };
+
+  const updateDraft = (patch: Partial<TextStyleDraft>): void => {
+    setEditingTextDraft((current) => (current ? { ...current, ...patch } : current));
+  };
+
+  const handleEditorKey = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitEditText();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelEditText();
+    }
   };
 
   // Instance counts scan the whole project, so derive them once per revision.
@@ -449,7 +647,355 @@ export function AssetsPanel() {
         ) : null}
       </section>
 
-      {components.length === 0 && assets.length === 0 && colorStyles.length === 0 ? (
+      <section className="wfm-assets__section" aria-label="Text styles">
+        <div className="wfm-panel-section__header">
+          <span>Text styles</span>
+          <button
+            type="button"
+            className="wfm-panel-add"
+            title="New text style"
+            aria-label="New text style"
+            onClick={() => {
+              setTextError(null);
+              if (!createTextStyle()) {
+                setTextError(
+                  useProjectStore.getState().error ?? "Could not create the text style.",
+                );
+              }
+            }}
+          >
+            <Icon name="plus" size={12} />
+          </button>
+        </div>
+        {textStyles.length === 0 ? (
+          <button
+            type="button"
+            className="wfm-assets__empty-add"
+            onClick={() => {
+              setTextError(null);
+              if (!createTextStyle()) {
+                setTextError(
+                  useProjectStore.getState().error ?? "Could not create the text style.",
+                );
+              }
+            }}
+          >
+            <Icon name="plus" size={12} />
+            New text style
+          </button>
+        ) : (
+          <div className="wfm-text-cards">
+            {textStyles.map((style) => {
+              if (editingTextId === style.id) {
+                const draft = editingTextDraft ?? draftFromStyle(style);
+                return (
+                  <div key={style.id} className="wfm-text-card is-editing">
+                    <div className="wfm-text-card__editor">
+                      <label className="wfm-text-card__field">
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          className="wfm-field"
+                          value={draft.name}
+                          aria-label="Text style name"
+                          autoFocus
+                          onChange={(event) => updateDraft({ name: event.target.value })}
+                          onKeyDown={handleEditorKey}
+                        />
+                      </label>
+
+                      <label className="wfm-text-card__field">
+                        <span>Font</span>
+                        <select
+                          className="wfm-select"
+                          value={draft.fontFamily}
+                          aria-label="Text style font family"
+                          onChange={(event) => {
+                            ensureFontLoaded(event.target.value);
+                            updateDraft({ fontFamily: event.target.value });
+                          }}
+                        >
+                          {KNOWN_FONT_FAMILIES.has(draft.fontFamily) ? null : (
+                            <option value={draft.fontFamily}>{draft.fontFamily}</option>
+                          )}
+                          <optgroup label="System">
+                            {SYSTEM_FONT_OPTIONS.map((option) => (
+                              <option key={option.family} value={option.family}>
+                                {option.family}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Google Fonts">
+                            {GOOGLE_FONT_OPTIONS.map((option) => (
+                              <option key={option.family} value={option.family}>
+                                {option.family}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </label>
+
+                      <div className="wfm-text-card__grid">
+                        <label className="wfm-text-card__field">
+                          <span>Size</span>
+                          <input
+                            type="number"
+                            className="wfm-field"
+                            value={draft.fontSize}
+                            min={1}
+                            max={512}
+                            aria-label="Text style font size"
+                            onChange={(event) => updateDraft({ fontSize: event.target.value })}
+                            onKeyDown={handleEditorKey}
+                          />
+                        </label>
+                        <label className="wfm-text-card__field">
+                          <span>Weight</span>
+                          <select
+                            className="wfm-select"
+                            value={draft.fontWeight}
+                            aria-label="Text style font weight"
+                            onChange={(event) =>
+                              updateDraft({ fontWeight: Number(event.target.value) })
+                            }
+                          >
+                            {Array.from(new Set([...FONT_WEIGHTS, draft.fontWeight]))
+                              .sort((a, b) => a - b)
+                              .map((weight) => (
+                                <option key={weight} value={weight}>
+                                  {weight}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="wfm-text-card__grid">
+                        <label className="wfm-text-card__field">
+                          <span>Line height</span>
+                          <span className="wfm-text-card__inline">
+                            <select
+                              className="wfm-select"
+                              value={draft.lineHeightAuto ? "auto" : "px"}
+                              aria-label="Text style line height unit"
+                              onChange={(event) =>
+                                updateDraft({ lineHeightAuto: event.target.value === "auto" })
+                              }
+                            >
+                              <option value="auto">Auto</option>
+                              <option value="px">PX</option>
+                            </select>
+                            {draft.lineHeightAuto ? null : (
+                              <input
+                                type="number"
+                                className="wfm-field"
+                                value={draft.lineHeight}
+                                min={0}
+                                aria-label="Text style line height"
+                                onChange={(event) =>
+                                  updateDraft({ lineHeight: event.target.value })
+                                }
+                                onKeyDown={handleEditorKey}
+                              />
+                            )}
+                          </span>
+                        </label>
+                        <label className="wfm-text-card__field">
+                          <span>Letter spacing</span>
+                          <input
+                            type="number"
+                            className="wfm-field"
+                            value={draft.letterSpacing}
+                            aria-label="Text style letter spacing"
+                            onChange={(event) =>
+                              updateDraft({ letterSpacing: event.target.value })
+                            }
+                            onKeyDown={handleEditorKey}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="wfm-text-card__grid">
+                        <label className="wfm-text-card__field">
+                          <span>Color</span>
+                          <input
+                            type="color"
+                            className="wfm-text-card__color"
+                            value={draft.color}
+                            aria-label="Text style color"
+                            onChange={(event) => updateDraft({ color: event.target.value })}
+                          />
+                        </label>
+                        <label className="wfm-text-card__field">
+                          <span>Align</span>
+                          <select
+                            className="wfm-select"
+                            value={draft.align}
+                            aria-label="Text style alignment"
+                            onChange={(event) =>
+                              updateDraft({ align: event.target.value as TextAlign })
+                            }
+                          >
+                            {TEXT_ALIGN_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="wfm-text-card__grid">
+                        <label className="wfm-text-card__field">
+                          <span>Case</span>
+                          <select
+                            className="wfm-select"
+                            value={draft.textTransform}
+                            aria-label="Text style transform"
+                            onChange={(event) =>
+                              updateDraft({
+                                textTransform: event.target.value as TextTransform,
+                              })
+                            }
+                          >
+                            {TEXT_TRANSFORM_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="wfm-text-card__field">
+                          <span>Decoration</span>
+                          <select
+                            className="wfm-select"
+                            value={draft.textDecoration}
+                            aria-label="Text style decoration"
+                            onChange={(event) =>
+                              updateDraft({
+                                textDecoration: event.target.value as TextDecoration,
+                              })
+                            }
+                          >
+                            {TEXT_DECORATION_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <label className="wfm-text-card__check">
+                        <input
+                          type="checkbox"
+                          checked={draft.italic}
+                          aria-label="Text style italic"
+                          onChange={(event) => updateDraft({ italic: event.target.checked })}
+                        />
+                        Italic
+                      </label>
+                    </div>
+
+                    <div className="wfm-text-card__editor-actions">
+                      <button
+                        type="button"
+                        className="wfm-color-card__action"
+                        onClick={commitEditText}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="wfm-color-card__action"
+                        title="Cancel"
+                        aria-label="Cancel text style edit"
+                        onClick={cancelEditText}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const usages = textUsageCounts.get(style.id) ?? 0;
+              return (
+                <div key={style.id} className="wfm-text-card">
+                  <button
+                    type="button"
+                    className="wfm-text-card__main"
+                    onClick={() => {
+                      ensureFontLoaded(style.values.fontFamily);
+                      if (applyTextStyle(style.id)) {
+                        setTextError(null);
+                      } else {
+                        setTextError(
+                          useProjectStore.getState().error ??
+                            "Select text layers to apply a text style.",
+                        );
+                      }
+                    }}
+                    title={`Apply ${style.name}`}
+                  >
+                    <span
+                      className="wfm-text-card__preview"
+                      style={{
+                        fontFamily: previewFontFamily(style.values.fontFamily),
+                        fontWeight: style.values.fontWeight,
+                        fontStyle: style.values.italic ? "italic" : "normal",
+                        color: style.values.color,
+                      }}
+                    >
+                      Aa
+                    </span>
+                    <span className="wfm-text-card__meta">
+                      <span className="wfm-text-card__name">{style.name}</span>
+                      <span className="wfm-text-card__stats">
+                        {usages} {usages === 1 ? "layer" : "layers"} ·{" "}
+                        {style.values.fontSize}px
+                      </span>
+                    </span>
+                  </button>
+                  <div className="wfm-text-card__actions">
+                    <button
+                      type="button"
+                      className="wfm-color-card__action"
+                      title={`Edit ${style.name}`}
+                      aria-label={`Edit ${style.name}`}
+                      onClick={() => startEditText(style)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="wfm-color-card__action wfm-color-card__delete"
+                      title={`Delete ${style.name}`}
+                      aria-label={`Delete ${style.name}`}
+                      onClick={() => {
+                        if (editingTextId === style.id) cancelEditText();
+                        removeTextStyle(style.id);
+                      }}
+                    >
+                      <Icon name="trash" size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {textError ? (
+          <p className="wfm-assets__error" role="alert">
+            {textError}
+          </p>
+        ) : null}
+      </section>
+
+      {components.length === 0 &&
+      assets.length === 0 &&
+      colorStyles.length === 0 &&
+      textStyles.length === 0 ? (
         <p className="wfm-empty">No assets yet.</p>
       ) : null}
 

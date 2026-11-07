@@ -18,8 +18,10 @@ import type {
   SceneNode,
   SizeProps,
   StyleProps,
+  TextContent,
   TextNode,
   TextProps,
+  TextStyleValues,
 } from "./types";
 import { SCHEMA_VERSION } from "./types";
 
@@ -204,6 +206,22 @@ export function defaultTextProps(): TextProps {
       whiteSpace: "normal",
       truncate: false,
     },
+  };
+}
+
+/** The subset of a text node's typography that a text style owns. */
+export function textStyleValuesFromText(text: TextContent): TextStyleValues {
+  return {
+    fontFamily: text.fontFamily,
+    fontSize: text.fontSize,
+    fontWeight: text.fontWeight,
+    lineHeight: text.lineHeight,
+    letterSpacing: text.letterSpacing,
+    color: text.color,
+    align: text.align,
+    textTransform: text.textTransform,
+    textDecoration: text.textDecoration,
+    italic: text.italic,
   };
 }
 
@@ -418,15 +436,22 @@ export function createProject(options: CreateProjectOptions = {}): Project {
     components: [],
     assets: [],
     colorStyles: [],
+    textStyles: [],
   };
 }
 
 /**
  * Fills in fields added after the first documents were written. The file store
- * returns parsed JSON, so a project saved before color styles existed will not
- * have `colorStyles`.
+ * returns parsed JSON, so a project saved before color or text styles existed
+ * will not have `colorStyles` / `textStyles`.
  */
 export function normalizeProject(project: Project): Project {
-  if (Array.isArray(project.colorStyles)) return project;
-  return { ...project, colorStyles: [] };
+  if (Array.isArray(project.colorStyles) && Array.isArray(project.textStyles)) {
+    return project;
+  }
+  return {
+    ...project,
+    colorStyles: Array.isArray(project.colorStyles) ? project.colorStyles : [],
+    textStyles: Array.isArray(project.textStyles) ? project.textStyles : [],
+  };
 }

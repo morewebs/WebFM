@@ -53,6 +53,9 @@ import type {
   SceneNode,
   SceneTarget,
   TextProps,
+  TextStyle,
+  TextStyleId,
+  TextStyleValues,
   VariantId,
 } from "./types";
 
@@ -1425,9 +1428,9 @@ export function updateColorStyle(
       const fill = override.style?.fill;
       if (fill) {
         if (fill.type === "solid") {
-          if (fill.styleId === id) fillLinked = true;
-          else if (fill.styleId === null) fillLinked = false;
-          // `undefined` inherits the link state from the previous breakpoint.
+          // Any explicit id that is not this style ends the chain; a different
+          // style id must not be recolored by edits to this one.
+          if (fill.styleId !== undefined) fillLinked = fill.styleId === id;
           if (fillLinked) {
             fill.color = color;
             fill.opacity = opacity;
@@ -1439,8 +1442,9 @@ export function updateColorStyle(
       }
 
       if (node.type === "text") {
-        if (override.colorStyleId === id) textLinked = true;
-        else if (override.colorStyleId === null) textLinked = false;
+        if (override.colorStyleId !== undefined) {
+          textLinked = override.colorStyleId === id;
+        }
         if (textLinked) override.text = { ...(override.text ?? {}), color };
       }
     }
@@ -1479,6 +1483,258 @@ export function countColorStyleUsages(project: Project, id: ColorStyleId): numbe
         const fill = props.style?.fill;
         if (fill?.type === "solid" && fill.styleId === id) linked = true;
         if (node.type === "text" && props.colorStyleId === id) linked = true;
+      });
+      if (linked) count += 1;
+    });
+  };
+
+  for (const page of project.pages) scan(page.root);
+  for (const component of project.components) {
+    for (const variant of component.variants) scan(variant.root);
+  }
+  return count;
+}
+
+/* --------------------------------------------------------------- text styles */
+
+/** Input for `addTextStyle`. The caller normally generates a unique name. */
+export interface TextStyleInput {
+  name: string;
+  values: TextStyleValues;
+  id?: TextStyleId;
+}
+
+/** Fields `updateTextStyle` may change. Omitted fields keep their value. */
+export interface TextStylePatch {
+  name?: string;
+  values?: Partial<TextStyleValues>;
+}
+
+function normalizeTextStyleName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) throw new Error("Text style name cannot be empty.");
+  return trimmed;
+}
+
+function assertUniqueTextStyleName(
+  project: Draft<Project>,
+  name: string,
+  excludeId?: TextStyleId,
+): void {
+  const key = name.trim().toLowerCase();
+  const clash = project.textStyles.some(
+    (style) => style.id !== excludeId && style.name.trim().toLowerCase() === key,
+  );
+  if (clash) throw new Error(`A text style named "${name}" already exists.`);
+}
+
+/** Validates the typography values a text style would write. */
+function validateTextStyleValues(values: Partial<TextStyleValues>): void {
+  const numbers: Array<"fontSize" | "fontWeight" | "letterSpacing"> = [
+    "fontSize",
+    "fontWeight",
+    "letterSpacing",
+  ];
+  for (const key of numbers) {
+    const value = values[key];
+    if (value !== undefined && !Number.isFinite(value)) {
+      throw new Error(`Text style ${key} must be a finite number, received ${String(value)}.`);
+    }
+  }
+
+  if (values.lineHeight !== undefined && values.lineHeight !== "auto") {
+    if (!Number.isFinite(values.lineHeight) || values.lineHeight < 0) {
+      throw new Error(
+        `Text style line height must be "auto" or a non-negative number, received ${String(values.lineHeight)}.`,
+      );
+    }
+  }
+
+  if (values.fontFamily !== undefined && values.fontFamily.trim().length === 0) {
+    throw new Error("Text style font family cannot be empty.");
+  }
+  if (values.color !== undefined && values.color.trim().length === 0) {
+    throw new Error("Text style color cannot be empty.");
+  }
+}
+
+function getTextStyleOrThrow(project: Draft<Project>, id: TextStyleId): Draft<TextStyle> {
+  const style = project.textStyles.find((candidate) => candidate.id === id);
+  if (!style) throw new Error(`Text style "${id}" was not found.`);
+  return style;
+}
+
+/**
+ * Adds a text style and returns its id. Names are trimmed and must be unique
+ * (case-insensitive); numeric values must be finite and line height must be
+ * either a non-negative number or "auto".
+ */
+export function addTextStyle(draft: Draft<Project>, input: TextStyleInput): TextStyleId {
+  const name = normalizeTextStyleName(input.name);
+  validateTextStyleValues(input.values);
+  assertUniqueTextStyleName(draft, name);
+
+  const id = input.id ?? createId("text");
+  if (draft.textStyles.some((style) => style.id === id)) {
+    throw new Error(`Text style id "${id}" is already used.`);
+  }
+
+  draft.textStyles.push({
+    id,
+    name,
+    values: {
+      ...input.values,
+      fontFamily: input.values.fontFamily.trim(),
+      color: input.values.color.trim(),
+    },
+  });
+  return id;
+}
+
+/** Writes style values into a usage, creating the text partial when needed. */
+function writeTextStyleValues(
+  props: DeepPartial<BoxProps & TextProps>,
+  values: Partial<TextStyleValues>,
+  skipColor: boolean,
+): void {
+  const text: Partial<TextStyleValues> = { ...values };
+  if (skipColor) delete text.color;
+  if (Object.keys(text).length === 0) return;
+  props.text = { ...(props.text ?? {}), ...text };
+}
+
+/**
+ * Pushes changed typography fields into every linked text layer, across all
+ * pages and component variants, following the widest-to-narrowest breakpoint
+ * cascade. A base `textStyleId === id` links; an override with `id` links,
+ * `null` detaches and `undefined` inherits. The text color is skipped on layers
+ * whose cascaded `colorStyleId` is non-null, because a color style wins for
+ * color only.
+ */
+function propagateTextStyleValues(
+  draft: Draft<Project>,
+  styleId: TextStyleId,
+  values: Partial<TextStyleValues>,
+): void {
+  walkProjectNodes(draft, (node) => {
+    if (node.type !== "text") return;
+    const responsive = node.responsive as unknown as {
+      base: BoxProps & TextProps;
+      overrides: Record<BreakpointId, DeepPartial<BoxProps & TextProps> | undefined>;
+    };
+
+    let textLinked = responsive.base.textStyleId === styleId;
+    let colorLinked = responsive.base.colorStyleId != null;
+    if (textLinked) writeTextStyleValues(responsive.base, values, colorLinked);
+
+    for (const breakpoint of draft.breakpoints.slice(1)) {
+      const override = responsive.overrides[breakpoint.id];
+      if (!override) continue;
+
+      // A different style id here owns this breakpoint; only edits to that
+      // style may touch its values.
+      if (override.textStyleId !== undefined) {
+        textLinked = override.textStyleId === styleId;
+      }
+
+      if (override.colorStyleId === null) colorLinked = false;
+      else if (override.colorStyleId !== undefined) colorLinked = true;
+
+      if (textLinked) writeTextStyleValues(override, values, colorLinked);
+    }
+  });
+}
+
+/**
+ * Updates a text style and propagates the changed typography fields into every
+ * linked text layer. Renaming alone does not touch usages.
+ */
+export function updateTextStyle(
+  draft: Draft<Project>,
+  id: TextStyleId,
+  patch: TextStylePatch,
+): void {
+  const style = getTextStyleOrThrow(draft, id);
+
+  if (patch.name !== undefined) {
+    const name = normalizeTextStyleName(patch.name);
+    assertUniqueTextStyleName(draft, name, id);
+    style.name = name;
+  }
+  if (patch.values === undefined) return;
+
+  validateTextStyleValues(patch.values);
+  const changed: Partial<TextStyleValues> = {};
+  const next = patch.values;
+
+  if (next.fontFamily !== undefined) {
+    const fontFamily = next.fontFamily.trim();
+    if (fontFamily !== style.values.fontFamily) changed.fontFamily = fontFamily;
+  }
+  if (next.fontSize !== undefined && next.fontSize !== style.values.fontSize) {
+    changed.fontSize = next.fontSize;
+  }
+  if (next.fontWeight !== undefined && next.fontWeight !== style.values.fontWeight) {
+    changed.fontWeight = next.fontWeight;
+  }
+  if (next.lineHeight !== undefined && next.lineHeight !== style.values.lineHeight) {
+    changed.lineHeight = next.lineHeight;
+  }
+  if (next.letterSpacing !== undefined && next.letterSpacing !== style.values.letterSpacing) {
+    changed.letterSpacing = next.letterSpacing;
+  }
+  if (next.color !== undefined) {
+    const color = next.color.trim();
+    if (color !== style.values.color) changed.color = color;
+  }
+  if (next.align !== undefined && next.align !== style.values.align) {
+    changed.align = next.align;
+  }
+  if (next.textTransform !== undefined && next.textTransform !== style.values.textTransform) {
+    changed.textTransform = next.textTransform;
+  }
+  if (next.textDecoration !== undefined && next.textDecoration !== style.values.textDecoration) {
+    changed.textDecoration = next.textDecoration;
+  }
+  if (next.italic !== undefined && next.italic !== style.values.italic) {
+    changed.italic = next.italic;
+  }
+
+  if (Object.keys(changed).length === 0) return;
+  Object.assign(style.values, changed);
+  propagateTextStyleValues(draft, id, changed);
+}
+
+/**
+ * Deletes a text style and clears every reference. Linked layers keep their last
+ * denormalized typography, so there are no dangling ids and nothing changes
+ * visually.
+ */
+export function removeTextStyle(draft: Draft<Project>, id: TextStyleId): void {
+  getTextStyleOrThrow(draft, id);
+  const index = draft.textStyles.findIndex((style) => style.id === id);
+  if (index !== -1) draft.textStyles.splice(index, 1);
+
+  walkProjectNodes(draft, (node) => {
+    if (node.type !== "text") return;
+    forEachBoxLayer(node, (props) => {
+      if (props.textStyleId === id) props.textStyleId = null;
+    });
+  });
+}
+
+/**
+ * Number of text layers that reference a style. A node counts once even when
+ * both its base and a breakpoint override carry the link.
+ */
+export function countTextStyleUsages(project: Project, id: TextStyleId): number {
+  let count = 0;
+  const scan = (root: SceneNode): void => {
+    walkNode(root, (node) => {
+      if (node.type !== "text") return;
+      let linked = false;
+      forEachBoxLayer(node as Draft<SceneNode>, (props) => {
+        if (props.textStyleId === id) linked = true;
       });
       if (linked) count += 1;
     });
