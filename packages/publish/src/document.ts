@@ -19,19 +19,30 @@ export function relativeStylesheetHref(depth: number): string {
   return `${"../".repeat(safeDepth)}styles.css`;
 }
 
+/** Relative path to the shared scroll runtime from a route's output depth. */
+export function relativeScriptHref(depth: number): string {
+  const safeDepth = Number.isFinite(depth) ? Math.max(0, Math.floor(depth)) : 0;
+  return `${"../".repeat(safeDepth)}webfm-scroll.js`;
+}
+
 export interface PageDocumentOptions {
   title: string;
   /** Relative link to the shared stylesheet, e.g. "../styles.css". */
   stylesheetHref: string;
   /** Google Fonts stylesheet URLs used by the page. */
   fontLinks?: string[];
+  /**
+   * Relative link to the optional dependency-free scroll runtime. Omitted when
+   * the project has no scroll effects.
+   */
+  scriptHref?: string;
   /** Rendered page fragment (the `.wfm-page` element). */
   body: string;
 }
 
 /** Wraps a rendered fragment in a complete standalone HTML document. */
 export function renderPageDocument(options: PageDocumentOptions): string {
-  const { title, stylesheetHref, fontLinks = [], body } = options;
+  const { title, stylesheetHref, fontLinks = [], scriptHref, body } = options;
   return [
     "<!doctype html>",
     '<html lang="en">',
@@ -41,9 +52,17 @@ export function renderPageDocument(options: PageDocumentOptions): string {
     `<title>${escapeHtml(title)}</title>`,
     ...fontLinks.map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`),
     `<link rel="stylesheet" href="${escapeHtml(stylesheetHref)}">`,
+    // Mark JavaScript as available before the body paints, so scroll layers
+    // never flash in their final state before the deferred observer runs.
+    ...(scriptHref
+      ? [
+          '<script>document.documentElement.classList.add("wfm-js");window.setTimeout(function(){if(!window.__wfmScrollReady){document.documentElement.classList.remove("wfm-js");}},3000);</script>',
+        ]
+      : []),
     "</head>",
     "<body>",
     body,
+    ...(scriptHref ? [`<script defer src="${escapeHtml(scriptHref)}"></script>`] : []),
     "</body>",
     "</html>",
     "",

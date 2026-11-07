@@ -1,4 +1,4 @@
-import type { Asset, Page, Project, SceneNode } from "@webfm/model";
+import type { Asset, Interaction, Page, Project, SceneNode } from "@webfm/model";
 import { createFrame, createImage, createPage, createProject, createText } from "@webfm/model";
 import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
@@ -370,5 +370,85 @@ describe("publishWithAdapter", () => {
     await publishWithAdapter(request(project));
 
     expect(JSON.stringify(project)).toBe(snapshot);
+  });
+});
+
+describe("static adapter scroll runtime", () => {
+  function scrollNode(): SceneNode {
+    const card = createFrame({ id: "node_card", name: "Card" });
+    const interaction: Interaction = {
+      id: "i_scroll",
+      trigger: "scroll",
+      effect: "fade",
+      direction: "up",
+      duration: 300,
+      delay: 0,
+      easing: "ease",
+    };
+    card.interactions = [interaction];
+    return card;
+  }
+
+  it("does not emit the runtime when the project has no scroll effects", async () => {
+    const project = projectWithPages([
+      page("Home", "/", [textNode("node_home", "Home")], "home"),
+    ]);
+
+    const result = await staticAdapter.publish(request(project));
+
+    expect(result.files["webfm-scroll.js"]).toBeUndefined();
+    expect(result.files["index.html"]).not.toContain("webfm-scroll.js");
+  });
+
+  it("emits the runtime once and links it relative to route depth", async () => {
+    const project = projectWithPages([
+      page("Home", "/", [scrollNode()], "home"),
+      page("About", "/about", [], "about"),
+      page("Team", "/a/b", [], "team"),
+    ]);
+
+    const result = await staticAdapter.publish(request(project));
+    const runtime = result.files["webfm-scroll.js"] as string;
+
+    expect(runtime).toContain("__wfmScrollReady = true");
+    expect(runtime).toContain('classList.add("wfm-js")');
+    expect(runtime).toContain("IntersectionObserver");
+    expect(runtime).toContain('querySelectorAll("[data-wfm-scroll]")');
+    expect(result.files["index.html"]).toContain(
+      '<script defer src="webfm-scroll.js"></script>',
+    );
+    expect(result.files["about/index.html"]).toContain(
+      '<script defer src="../webfm-scroll.js"></script>',
+    );
+    expect(result.files["a/b/index.html"]).toContain(
+      '<script defer src="../../webfm-scroll.js"></script>',
+    );
+    const home = result.files["index.html"] as string;
+    // The head script adds the class before paint and steps aside if the
+    // deferred runtime never loads, so blocked JS cannot hide content forever.
+    expect(home).toContain('document.documentElement.classList.add("wfm-js")');
+    expect(home).toContain("__wfmScrollReady");
+    expect(home.indexOf('<script>document.documentElement.classList.add("wfm-js")')).toBeLessThan(
+      home.indexOf("</head>"),
+    );
+    expect(home.indexOf('<script defer src="webfm-scroll.js"></script>')).toBeLessThan(
+      home.indexOf("</body>"),
+    );
+    expect(result.files["styles.css"]).toContain(
+      '.wfm-js [data-wfm-scroll="i_scroll"]',
+    );
+    expect(result.files["index.html"]).toContain('data-wfm-scroll="i_scroll"');
+  });
+
+  it("includes the runtime in the zip file", async () => {
+    const project = projectWithPages([
+      page("Home", "/", [scrollNode()], "home"),
+    ]);
+
+    const result = await staticAdapter.publish(request(project));
+    const unzipped = unzipSync(zipFiles(result.files));
+
+    expect(unzipped["webfm-scroll.js"]).toBeInstanceOf(Uint8Array);
+    expect(unzipped["index.html"]).toBeInstanceOf(Uint8Array);
   });
 });

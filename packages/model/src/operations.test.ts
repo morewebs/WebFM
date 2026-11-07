@@ -990,6 +990,41 @@ describe("interactions", () => {
     expect(interactionsOf(removed.project, "hero")).toEqual([]);
   });
 
+  it("accepts a scroll interaction and updates or removes it", () => {
+    const added = run(seeded, (draft) =>
+      addInteraction(draft, { pageId, nodeId: "hero" }, {
+        ...DEFAULT_INTERACTION,
+        trigger: "scroll",
+        effect: "slide",
+        direction: "up",
+      }),
+    );
+    expect(interactionsOf(added.project, "hero")[0]).toMatchObject({
+      trigger: "scroll",
+      effect: "slide",
+      direction: "up",
+    });
+
+    const updated = run(added.project, (draft) =>
+      updateInteraction(draft, { pageId, nodeId: "hero" }, added.result, {
+        trigger: "scroll",
+        duration: 450,
+        delay: 25,
+      }),
+    );
+    expect(interactionsOf(updated.project, "hero")[0]).toMatchObject({
+      id: added.result,
+      trigger: "scroll",
+      duration: 450,
+      delay: 25,
+    });
+
+    const removed = run(updated.project, (draft) =>
+      removeInteraction(draft, { pageId, nodeId: "hero" }, added.result),
+    );
+    expect(interactionsOf(removed.project, "hero")).toEqual([]);
+  });
+
   it("accepts an explicit id, keeps ids unique and appends in order", () => {
     const first = run(seeded, (draft) =>
       addInteraction(draft, { pageId, nodeId: "hero" }, { ...DEFAULT_INTERACTION, id: "i_one" }),
@@ -1049,7 +1084,7 @@ describe("interactions", () => {
 
   it("validates trigger, effect, direction, easing, duration and delay", () => {
     const invalid: Array<Partial<InteractionInput>> = [
-      { trigger: "scroll" as unknown as InteractionTrigger },
+      { trigger: "drag" as unknown as InteractionTrigger },
       { effect: "blur" as unknown as InteractionEffect },
       { direction: "diagonal" as unknown as InteractionDirection },
       { easing: "spring" as unknown as InteractionEasing },

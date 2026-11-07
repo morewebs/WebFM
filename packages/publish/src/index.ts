@@ -18,6 +18,7 @@ export {
 export {
   escapeHtml,
   type PageDocumentOptions,
+  relativeScriptHref,
   relativeStylesheetHref,
   renderPageDocument,
 } from "./document";

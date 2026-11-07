@@ -1,5 +1,5 @@
 import { buildPageCss, PageView } from "@webfm/render";
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import { activePageOf, useProjectStore } from "../../state/project-store";
 import { useUIStore } from "../ui-store";
 import "./Preview.css";
@@ -15,6 +15,41 @@ export function Preview(): ReactElement {
   const activePageId = useProjectStore((state) => state.activePageId);
   const activeBreakpointId = useProjectStore((state) => state.activeBreakpointId);
   const [breakpointId, setBreakpointId] = useState(activeBreakpointId);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Replicates the published scroll runtime inside the preview: the canvas
+  // carries `.wfm-js`, and the stage is the scroll root. Reveal state is
+  // deliberately not reset when the project identity changes (autosave) or the
+  // breakpoint changes; IntersectionObserver recomputes on layout changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-observe only when the page changes.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const stage = stageRef.current;
+    const elements = Array.from(canvas.querySelectorAll<HTMLElement>("[data-wfm-scroll]"));
+
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver === "function") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add("wfm-revealed");
+            observer?.unobserve(entry.target);
+          }
+        },
+        { threshold: 0.01, root: stage, rootMargin: "0px" },
+      );
+      for (const element of elements) observer.observe(element);
+    } else {
+      for (const element of elements) element.classList.add("wfm-revealed");
+    }
+
+    return () => {
+      observer?.disconnect();
+    };
+  }, [activePageId]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent): void => {
@@ -72,8 +107,12 @@ export function Preview(): ReactElement {
       {css ? <style>{css}</style> : null}
 
       {project && page && breakpoint ? (
-        <div className="wfm-preview__stage">
-          <div className="wfm-preview__canvas" style={{ width: breakpoint.width }}>
+        <div className="wfm-preview__stage" ref={stageRef}>
+          <div
+            className="wfm-preview__canvas wfm-js"
+            ref={canvasRef}
+            style={{ width: breakpoint.width }}
+          >
             <PageView
               project={project}
               page={page}

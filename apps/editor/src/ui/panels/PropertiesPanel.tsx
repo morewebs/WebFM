@@ -2980,6 +2980,7 @@ interface EffectOption<T extends string> {
 
 const EFFECT_TRIGGERS: ReadonlyArray<EffectOption<InteractionTrigger>> = [
   { value: "appear", label: "Appear" },
+  { value: "scroll", label: "Scroll" },
   { value: "hover", label: "Hover" },
   { value: "tap", label: "Tap" },
 ];
@@ -3004,9 +3005,10 @@ const EFFECT_EASINGS: ReadonlyArray<EffectOption<InteractionEasing>> = [
   { value: "ease-out", label: "Ease Out" },
 ];
 
-/** Framer's defaults: Appear fades, Hover and Tap scale. */
+/** Framer's defaults: Appear and Scroll fade, Hover and Tap scale. */
 const EFFECT_DEFAULTS: Record<InteractionTrigger, InteractionEffect> = {
   appear: "fade",
+  scroll: "fade",
   hover: "scale",
   tap: "scale",
 };
@@ -3084,9 +3086,9 @@ interface EffectsSectionProps {
 }
 
 /**
- * Ordered Appear/Hover/Tap effects for one node. Every write goes through
- * `applyRecipe` so undo, autosave and the publish CSS see it. Number fields
- * commit on blur/Enter, so a typed duration is one history entry.
+ * Ordered Appear/Scroll/Hover/Tap effects for one node. Every write goes
+ * through `applyRecipe` so undo, autosave and the publish CSS see it. Number
+ * fields commit on blur/Enter, so a typed duration is one history entry.
  */
 function EffectsSection({ node, target }: EffectsSectionProps) {
   const applyRecipe = useProjectStore((state) => state.applyRecipe);
@@ -3121,7 +3123,7 @@ function EffectsSection({ node, target }: EffectsSectionProps) {
   return (
     <Section title="Effects" add={<EffectsAddMenu onAdd={addEffect} />}>
       {interactions.length === 0 ? (
-        <p className="wfm-pp__note">No effects yet. Use + to add an appear, hover or tap effect.</p>
+        <p className="wfm-pp__note">No effects yet. Use + to add an appear, scroll, hover or tap effect.</p>
       ) : (
         <div className="wfm-pp__effect-list">
           {interactions.map((interaction) => (

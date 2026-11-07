@@ -134,12 +134,12 @@ export interface Responsive<T> {
 export type SceneNode = FrameNode | TextNode | ImageNode | ComponentInstanceNode;
 export type NodeType = SceneNode["type"];
 
-export type InteractionTrigger = "appear" | "hover" | "tap";
+export type InteractionTrigger = "appear" | "scroll" | "hover" | "tap";
 export type InteractionEffect = "fade" | "slide" | "scale";
 export type InteractionDirection = "up" | "down" | "left" | "right";
 export type InteractionEasing = "ease" | "linear" | "ease-in" | "ease-out";
 
-/** One Appear, Hover or Tap effect attached to a node. */
+/** One Appear, Scroll, Hover or Tap effect attached to a node. */
 export interface Interaction {
   id: string;
   trigger: InteractionTrigger;

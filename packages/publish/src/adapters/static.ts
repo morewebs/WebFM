@@ -2,8 +2,9 @@ import type { Asset, Page, Project } from "@webfm/model";
 import { projectFontHrefs, type RenderOptions } from "@webfm/render";
 import { buildPageCss, renderPageToHtml } from "@webfm/render/server";
 import { defaultAssetPath, normalizeAssetPath, publishAssetUrl } from "../asset-paths";
-import { relativeStylesheetHref, renderPageDocument } from "../document";
+import { relativeScriptHref, relativeStylesheetHref, renderPageDocument } from "../document";
 import { routeDepth, routeToFilePath, withRouteSuffix } from "../routes";
+import { projectHasScrollInteractions, SCROLL_RUNTIME_JS } from "../scroll-runtime";
 import type {
   AssetPayload,
   AssetResolver,
@@ -92,19 +93,23 @@ export const staticAdapter: PublishAdapter = {
     const usedPaths = new Set<string>();
     const stylesheets: string[] = [];
     const fontLinks = projectFontHrefs(project);
+    const hasScroll = projectHasScrollInteractions(project);
 
     for (const page of project.pages) {
       const filePath = uniquePagePath(page.path, usedPaths);
+      const depth = routeDepth(page.path);
       files[filePath] = renderPageDocument({
         title: pageTitle(page, project),
-        stylesheetHref: relativeStylesheetHref(routeDepth(page.path)),
+        stylesheetHref: relativeStylesheetHref(depth),
         fontLinks,
+        scriptHref: hasScroll ? relativeScriptHref(depth) : undefined,
         body: renderPageToHtml(project, page, options),
       });
       stylesheets.push(buildPageCss(project, page, options));
     }
 
     files["styles.css"] = stylesheets.join("\n\n");
+    if (hasScroll) files["webfm-scroll.js"] = SCROLL_RUNTIME_JS;
 
     return {
       files,

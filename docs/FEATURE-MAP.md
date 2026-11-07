@@ -15,7 +15,7 @@ outside this project's scope.
   rectangle/rounded/oval tools, Google Fonts picker, rulers, guides and
   smart-guide snapping, responsive breakpoints,
   components/instances/variants/property controls, instance style overrides,
-  Appear/Hover/Tap effects,
+  Appear/Hover/Tap effects, scroll effects,
   alignment, context menus, preview, static publish.
 - **Partial:** Pages, Layers, Assets, Style, Components, Interactions, menus,
   shortcuts, publishing.
@@ -135,7 +135,7 @@ outside this project's scope.
 | --- | --- | --- |
 | Appear/Hover/Tap with Fade/Slide/Scale, duration/delay/easing | Done | First effect per trigger emitted. |
 | Press/drag/loop effects | Missing | |
-| Scroll effects/variants/transform/speed | Missing | |
+| Scroll effects | Partial | Scroll trigger with Fade/Slide/Scale, direction, duration, delay and easing; the first scroll effect per layer reveals once when it enters the viewport. Published CSS hides layers only under `.wfm-js`; the static exporter emits `webfm-scroll.js` (IntersectionObserver, dependency-free) and Preview mirrors it with an effect. Verified; hover/tap still work after reveal, print shows final states, and variant-root effects apply to instances. No parallax, speed, sticky or scroll-linked transforms; no scroll variants. |
 | Show overlay / set variant actions | Missing | |
 | Trigger conditions (cookies, params, visited pages, forms, link click) | Missing | |
 | Page transitions/view transitions | Missing | |
@@ -171,7 +171,8 @@ outside this project's scope.
 
 ## P1 gaps
 
-- Press/drag/scroll interactions, overlays, set-variant actions.
+- Press/drag interactions, overlays, set-variant actions; scroll variants,
+  parallax, speed and scroll-linked transforms.
 - Per-variant property defaults, nested components.
 - Code components and code overrides.
 - CMS, localization, analytics, settings.

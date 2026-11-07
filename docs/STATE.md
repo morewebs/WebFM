@@ -2,14 +2,15 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 11:45
+**Updated:** 2026-11-07 12:30
 
 ## Current milestone
 
 The core editor, component slice (including instance style overrides),
-interactions, guides/snapping and linked color/text styles are built. Working
-through the remaining backlog: polygon/star, per-variant property defaults,
-richer interactions, then code components and CMS.
+interactions (Appear/Hover/Tap/Scroll), guides/snapping and linked color/text
+styles are built. Working through the remaining backlog: polygon/star,
+per-variant property defaults, richer interactions, then code components and
+CMS.
 
 ## Areas
 
@@ -38,6 +39,7 @@ richer interactions, then code components and CMS.
 | Rulers and guides | done | Ctrl+R rulers, Alt+G guides, drag from a ruler to create, drag to move, drag off the page to delete; page-owned guides persist. Verified. |
 | Smart-guide snapping | done | Parent/sibling/page/guide edges and centers, 4px screen threshold, snap lines, Alt bypasses; rects measured synchronously at pointer-down. Verified. |
 | Interactions | done | Appear/Hover/Tap with fade/slide/scale, duration, delay and easing; Preview and publish CSS; verified. |
+| Scroll effects | partial (verified) | Scroll trigger with fade/slide/scale, duration, delay and easing; `data-wfm-scroll`, `.wfm-js` progressive enhancement, per-breakpoint keyframes and a generated `webfm-scroll.js` (IntersectionObserver, once per layer); Preview mirrors it. Verified. Hover/tap survive reveal, reduced motion and print show final content, and variant-root effects apply to instance wrappers. Trigger-once only: no parallax/speed/sticky/scroll-linked transforms. |
 | Assets | done | Upload API, panel listing, image insertion, publish copy. File picker handoff blocked by a Chrome extension setting. |
 | Framer reference | done for core | 74 screenshots; computed tokens, 23 extracted SVGs, fonts. |
 | Manual verification | done for core+components | See verified list below. |
@@ -143,6 +145,15 @@ richer interactions, then code components and CMS.
   state; removeBreakpoint clears instance override layers; fill:null and
   sparse fills follow the link cascade; color styles create/apply on
   instances; copy/paste fill/style use the effective instance appearance.
+- Scroll effects: added Scroll via Effects + to a below-the-fold text layer;
+  editor canvas stayed in its final state, Preview hid it under `.wfm-js`,
+  exposed the hide/reveal rules, per-breakpoint keyframes and reduced-motion
+  rules, and revealed via the observer; published document contained the
+  pre-paint class script, depth-relative deferred runtime tag and
+  `webfm-scroll.js`, and the CSS contained the scroll rules. A served
+  published page loaded the runtime asset. Review then fixed hover/tap being
+  pinned by animation fill, print omission, component-root effects, Preview
+  autosave/breakpoint reveal loss, and added the runtime-load fallback.
 
 - Bugs found and fixed: detached `fetch` binding, unaliased `Inter` document
   font, responsive merge wiping layout fields, new pages missing breakpoint
@@ -154,16 +165,17 @@ richer interactions, then code components and CMS.
   text-style propagation overwriting breakpoints linked to another style,
   partial typography detaches still inheriting base edits, style fonts missing
   after reload, orphaned instance overrides on breakpoint removal, sparse-fill
-  links, non-disjoint publish media blocks, and primary-baked appear
-  keyframes.
+  links, non-disjoint publish media blocks, primary-baked appear keyframes,
+  scroll reveal pinning hover/tap, print-hidden scroll layers, and
+  component-root scroll effects not reaching the instance wrapper.
 
 ## Next
 
 1. Code components, then CMS.
 2. Polygon/star tools.
 3. Per-variant property defaults; publish class scoping; more interactions.
-4. More interaction triggers (scroll, drag) and effect types; multiple effects
-   per trigger.
+4. More interaction triggers (drag/loop) and effect types; multiple effects per
+   trigger; scroll-linked transforms and parallax.
 5. Cloud/auth design discussion (deferred).
 
 ## Known limits
@@ -192,8 +204,11 @@ richer interactions, then code components and CMS.
 - Page background editing is not exposed in the no-selection panel (matches
   Framer's Typography/Template panel).
 - Text layers do not auto-rename with content.
-- Only the first interaction per trigger (appear/hover/tap) is emitted; scroll,
+- Only the first interaction per trigger (appear/scroll/hover/tap) is emitted;
   drag and loop triggers are not built.
+- Scroll effects reveal once when a layer enters the viewport. There is no
+  parallax, speed control, sticky behavior or scroll-linked transform, and a
+  layer cannot run more than one scroll effect at a time.
 - Alignment applies to siblings whose parent uses free layout; stack/grid
   alignment follows the layout and the buttons disable. Distribution needs 3+
   layers; the extra alignment menu is not built.
