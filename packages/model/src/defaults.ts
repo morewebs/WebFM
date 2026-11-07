@@ -417,5 +417,16 @@ export function createProject(options: CreateProjectOptions = {}): Project {
     pages: [page],
     components: [],
     assets: [],
+    colorStyles: [],
   };
+}
+
+/**
+ * Fills in fields added after the first documents were written. The file store
+ * returns parsed JSON, so a project saved before color styles existed will not
+ * have `colorStyles`.
+ */
+export function normalizeProject(project: Project): Project {
+  if (Array.isArray(project.colorStyles)) return project;
+  return { ...project, colorStyles: [] };
 }

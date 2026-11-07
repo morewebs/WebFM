@@ -2,8 +2,8 @@ import {
   createFrame,
   createProject,
   createText,
-  findNode,
   type FrameNode,
+  findNode,
   type Project,
   type TextNode,
 } from "@webfm/model";
@@ -401,9 +401,9 @@ describe("project store", () => {
 
     const state = store.getState();
     expect(state.activeBreakpointId).toBe(project.breakpoints[0]?.id);
-    expect(
-      state.project?.breakpoints.some((breakpoint) => breakpoint.id === breakpointId),
-    ).toBe(false);
+    expect(state.project?.breakpoints.some((breakpoint) => breakpoint.id === breakpointId)).toBe(
+      false,
+    );
     expect(frameAt(state.project, rootId).responsive.overrides[breakpointId]).toBeUndefined();
   });
 
@@ -623,9 +623,7 @@ describe("project store", () => {
       .getState()
       .project?.components.find((candidate) => candidate.id === created.componentId);
     expect(component?.variants).toHaveLength(2);
-    expect(component?.variants.find((variant) => variant.id === variantId)?.name).toBe(
-      "Variant 2",
-    );
+    expect(component?.variants.find((variant) => variant.id === variantId)?.name).toBe("Variant 2");
 
     store.getState().exitComponent();
     const instanceId = store.getState().insertComponentInstance(created.componentId);
@@ -710,11 +708,13 @@ describe("project store", () => {
 
     store.getState().select(childId);
     store.getState().select("node_badge", true);
-    const frameId = store.getState().wrapSelection(
-      "frame",
-      { x: 0, y: 0, width: 200, height: 120 },
-      { [childId]: { x: 0, y: 0 }, node_badge: { x: 40, y: 50 } },
-    );
+    const frameId = store
+      .getState()
+      .wrapSelection(
+        "frame",
+        { x: 0, y: 0, width: 200, height: 120 },
+        { [childId]: { x: 0, y: 0 }, node_badge: { x: 40, y: 50 } },
+      );
 
     expect(frameId).not.toBeNull();
     const state = store.getState();
@@ -764,11 +764,13 @@ describe("project store", () => {
     await store.getState().openProject(project.id);
 
     store.getState().selectMany([childId, "node_badge"]);
-    const frameId = store.getState().wrapSelection(
-      "stack",
-      { x: 0, y: 0, width: 200, height: 120 },
-      { [childId]: { x: 0, y: 0 }, node_badge: { x: 40, y: 50 } },
-    )!;
+    const frameId = store
+      .getState()
+      .wrapSelection(
+        "stack",
+        { x: 0, y: 0, width: 200, height: 120 },
+        { [childId]: { x: 0, y: 0 }, node_badge: { x: 40, y: 50 } },
+      )!;
 
     const moved = store.getState().unwrapSelection(frameId);
     expect(moved).toEqual([childId, "node_badge"]);
@@ -805,21 +807,19 @@ describe("project store", () => {
     const created = store.getState().createComponentFromSelection("Card");
     if (!created) throw new Error("Component was not created");
 
-    const variant = variantFrame(
-      store.getState().project!,
-      created.componentId,
-      created.variantId,
-    );
+    const variant = variantFrame(store.getState().project!, created.componentId, created.variantId);
     const nodeA = variant.children[0];
     const nodeB = variant.children[1];
     if (!nodeA || !nodeB) throw new Error("Variant children missing");
 
     store.getState().selectMany([nodeA.id, nodeB.id]);
-    const frameId = store.getState().wrapSelection(
-      "frame",
-      { x: 0, y: 0, width: 300, height: 200 },
-      { [nodeA.id]: { x: 1, y: 2 }, [nodeB.id]: { x: 3, y: 4 } },
-    );
+    const frameId = store
+      .getState()
+      .wrapSelection(
+        "frame",
+        { x: 0, y: 0, width: 300, height: 200 },
+        { [nodeA.id]: { x: 1, y: 2 }, [nodeB.id]: { x: 3, y: 4 } },
+      );
     expect(frameId).not.toBeNull();
 
     let root = variantFrame(store.getState().project!, created.componentId, created.variantId);
@@ -839,11 +839,9 @@ describe("project store", () => {
     await store.getState().openProject(project.id);
 
     store.getState().select(rootId);
-    const frameId = store.getState().wrapSelection(
-      "frame",
-      { x: 0, y: 0, width: 200, height: 120 },
-      {},
-    );
+    const frameId = store
+      .getState()
+      .wrapSelection("frame", { x: 0, y: 0, width: 200, height: 120 }, {});
     expect(frameId).toBeNull();
     expect(store.getState().history?.past).toHaveLength(0);
     expect(store.getState().selection).toEqual([rootId]);
@@ -858,9 +856,7 @@ describe("project store", () => {
     const guideId = store.getState().addGuide("x", 120);
     expect(guideId).toMatch(/^guide_/);
     let state = store.getState();
-    expect(state.project?.pages[0]?.guides).toEqual([
-      { id: guideId, axis: "x", position: 120 },
-    ]);
+    expect(state.project?.pages[0]?.guides).toEqual([{ id: guideId, axis: "x", position: 120 }]);
     expect(state.history?.past).toHaveLength(1);
     expect(state.history?.past[0]?.label).toBe("Add guide");
     expect(state.selection).toEqual([]);
@@ -907,5 +903,250 @@ describe("project store", () => {
     expect(store.getState().project?.pages[0]?.guides?.[0]?.position).toBe(84);
     store.getState().removeGuide(guideId!);
     expect(store.getState().project?.pages[0]?.guides).toEqual([]);
+  });
+});
+
+describe("color styles", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("creates a style from the selected fill or text color with unique names", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(
+      createText({
+        id: "node_label",
+        content: "Label",
+        props: { text: { color: "#abcdef" } },
+      }),
+    );
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().select(childId);
+    const first = store.getState().createColorStyle();
+    expect(first).not.toBeNull();
+    expect(store.getState().project?.colorStyles).toHaveLength(1);
+    expect(store.getState().project?.colorStyles[0]).toMatchObject({
+      id: first,
+      name: "Color 1",
+      color: "#ffffff",
+      opacity: 1,
+    });
+    expect(store.getState().history?.past).toHaveLength(1);
+    // The layer the style was created from is linked in the same entry.
+    const linkedFill = frameAt(store.getState().project, childId).responsive.base.style.fill;
+    if (linkedFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(linkedFill).toMatchObject({ color: "#ffffff", opacity: 1, styleId: first });
+
+    store.getState().select("node_label");
+    const second = store.getState().createColorStyle();
+    expect(second).not.toBeNull();
+    expect(store.getState().project?.colorStyles[1]).toMatchObject({
+      name: "Color 2",
+      color: "#abcdef",
+      opacity: 1,
+    });
+    expect(store.getState().history?.past).toHaveLength(2);
+    const linkedText = textNode(store.getState().project, "node_label");
+    expect(linkedText.responsive.base.text.color).toBe("#abcdef");
+    expect(linkedText.responsive.base.colorStyleId).toBe(second);
+  });
+
+  it("falls back to the default color when nothing usable is selected", async () => {
+    const { project } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    store.getState().createColorStyle();
+    expect(store.getState().project?.colorStyles[0]).toMatchObject({
+      color: "#0099ff",
+      opacity: 1,
+    });
+  });
+
+  it("applies a style to a frame and text in one entry, then undoes it", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createColorStyle(false);
+    if (!styleId) throw new Error("Expected a color style");
+
+    store.getState().selectMany([childId, "node_label"]);
+    expect(store.getState().applyColorStyle(styleId)).toBe(true);
+
+    const fill = frameAt(store.getState().project, childId).responsive.base.style.fill;
+    if (fill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(fill).toMatchObject({ color: "#0099ff", opacity: 1, styleId });
+
+    const label = textNode(store.getState().project, "node_label");
+    expect(label.responsive.base.text.color).toBe("#0099ff");
+    expect(label.responsive.base.colorStyleId).toBe(styleId);
+    expect(store.getState().history?.past).toHaveLength(2);
+
+    store.getState().undo();
+
+    const undoneFill = frameAt(store.getState().project, childId).responsive.base.style.fill;
+    if (undoneFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(undoneFill.color).toBe("#ffffff");
+    expect(undoneFill.styleId).toBeUndefined();
+    const undoneLabel = textNode(store.getState().project, "node_label");
+    expect(undoneLabel.responsive.base.colorStyleId).toBeUndefined();
+    expect(store.getState().history?.past).toHaveLength(1);
+  });
+
+  it("edits a style, propagates to linked usages, and undoes the propagation", async () => {
+    const { project, childId } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(createText({ id: "node_label", content: "Label" }));
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createColorStyle(false);
+    if (!styleId) throw new Error("Expected a color style");
+    store.getState().selectMany([childId, "node_label"]);
+    store.getState().applyColorStyle(styleId);
+
+    expect(
+      store.getState().updateColorStyle(styleId, {
+        name: "Accent",
+        color: "#ff0000",
+        opacity: 0.4,
+      }),
+    ).toBe(true);
+
+    expect(store.getState().project?.colorStyles[0]).toMatchObject({
+      name: "Accent",
+      color: "#ff0000",
+      opacity: 0.4,
+    });
+    const fill = frameAt(store.getState().project, childId).responsive.base.style.fill;
+    if (fill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(fill).toMatchObject({ color: "#ff0000", opacity: 0.4, styleId });
+    const label = textNode(store.getState().project, "node_label");
+    expect(label.responsive.base.text.color).toBe("#ff0000");
+
+    store.getState().undo();
+
+    expect(store.getState().project?.colorStyles[0]).toMatchObject({
+      name: "Color 1",
+      color: "#0099ff",
+      opacity: 1,
+    });
+    const undoneFill = frameAt(store.getState().project, childId).responsive.base.style.fill;
+    if (undoneFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(undoneFill).toMatchObject({ color: "#0099ff", opacity: 1 });
+    expect(textNode(store.getState().project, "node_label").responsive.base.text.color).toBe(
+      "#0099ff",
+    );
+  });
+
+  it("rejects empty or duplicate names and keeps the previous edit", async () => {
+    const { project } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const first = store.getState().createColorStyle(false);
+    const second = store.getState().createColorStyle(false);
+    if (!first || !second) throw new Error("Expected two color styles");
+
+    expect(store.getState().updateColorStyle(first, { name: "  " })).toBe(false);
+    expect(store.getState().error).toMatch(/cannot be empty/);
+    expect(store.getState().updateColorStyle(second, { name: "Color 1" })).toBe(false);
+    expect(store.getState().error).toMatch(/already exists/i);
+    expect(store.getState().project?.colorStyles[1]?.name).toBe("Color 2");
+  });
+
+  it("removes a style, detaches usages and keeps their color", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createColorStyle(false);
+    if (!styleId) throw new Error("Expected a color style");
+    store.getState().select(childId);
+    store.getState().applyColorStyle(styleId);
+
+    store.getState().removeColorStyle(styleId);
+
+    expect(store.getState().project?.colorStyles).toHaveLength(0);
+    const fill = frameAt(store.getState().project, childId).responsive.base.style.fill;
+    if (fill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(fill.color).toBe("#0099ff");
+    expect(fill.styleId).toBeNull();
+  });
+
+  it("reports a clear error when the selection cannot take a color", async () => {
+    const { project, rootId } = fixture();
+    const page = project.pages[0]!;
+    page.root.children.push(
+      createFrame({
+        id: "node_picture",
+        name: "Image",
+        props: { style: { fill: null } },
+      }),
+    );
+    const picture = page.root.children.find((node) => node.id === "node_picture");
+    if (!picture) throw new Error("Missing fixture node");
+    // Replace the frame with an image so the store action rejects it.
+    const imageBlock = picture as unknown as { type: "frame" | "image" };
+    imageBlock.type = "image";
+
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createColorStyle(false);
+    if (!styleId) throw new Error("Expected a color style");
+    store.getState().select("node_picture");
+    expect(store.getState().applyColorStyle(styleId)).toBe(false);
+    expect(store.getState().error).toMatch(/Select a frame or text layer/);
+
+    store.getState().select(rootId);
+    expect(store.getState().applyColorStyle(styleId)).toBe(true);
+  });
+
+  it("does not add history entries for an unchanged apply or style edit", async () => {
+    const { project, childId } = fixture();
+    const { api } = makeApi(project);
+    const store = createProjectStore({ api, now: () => 1000 });
+    await store.getState().openProject(project.id);
+
+    const styleId = store.getState().createColorStyle(false);
+    if (!styleId) throw new Error("Expected a color style");
+    store.getState().select(childId);
+    expect(store.getState().applyColorStyle(styleId)).toBe(true);
+    expect(store.getState().history?.past).toHaveLength(2);
+    const applied = JSON.stringify(store.getState().project);
+
+    expect(store.getState().applyColorStyle(styleId)).toBe(true);
+    expect(store.getState().history?.past).toHaveLength(2);
+    expect(JSON.stringify(store.getState().project)).toBe(applied);
+
+    const style = store.getState().project?.colorStyles[0];
+    if (!style) throw new Error("Expected the color style");
+    expect(
+      store.getState().updateColorStyle(styleId, {
+        name: style.name,
+        color: style.color,
+        opacity: style.opacity,
+      }),
+    ).toBe(true);
+    expect(store.getState().history?.past).toHaveLength(2);
+    expect(JSON.stringify(store.getState().project)).toBe(applied);
   });
 });

@@ -22,6 +22,7 @@ import {
   defaultTextProps,
 } from "@webfm/model";
 import { describe, expect, it } from "vitest";
+import { renderPageToHtml } from "./html";
 import {
   buildPageCss,
   nodeClassName,
@@ -29,7 +30,6 @@ import {
   resolveImageStyles,
   resolveTextStyles,
 } from "./index";
-import { renderPageToHtml } from "./html";
 import type { RenderOptions } from "./types";
 
 const EDITOR: RenderOptions = { breakpointId: "bp_desktop", mode: "editor" };
@@ -195,6 +195,30 @@ describe("buildPageCss", () => {
     expect(css).toContain("width: 300px");
     expect(css).toContain("width: 200px");
     expect(css).toContain("background-color: #0000ff");
+  });
+
+  it("publishes denormalized linked color styles without a project lookup", () => {
+    const card = createFrame({
+      id: "node_linked_card",
+      props: {
+        style: {
+          fill: { type: "solid", color: "#00ff00", opacity: 0.5, styleId: "color_1" },
+        },
+      },
+    });
+    const title = createText({ id: "node_linked_title", content: "Title" });
+    title.responsive.base.text.color = "#123456";
+    title.responsive.base.colorStyleId = "color_1";
+
+    const { project, page } = projectWith([card, title]);
+    // Rendering must use the fill/text values, never the style record.
+    project.colorStyles = [{ id: "color_1", name: "Brand", color: "#ff0000", opacity: 1 }];
+
+    const css = buildPageCss(project, page, PUBLISH);
+
+    expect(css).toContain("background-color: rgba(0, 255, 0, 0.5)");
+    expect(css).toContain("color: #123456");
+    expect(css).not.toContain("#ff0000");
   });
 
   it("emits text and image child classes", () => {

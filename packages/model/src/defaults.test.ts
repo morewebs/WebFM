@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_BREAKPOINTS,
   createFrame,
   createProject,
   createText,
+  DEFAULT_BREAKPOINTS,
   mergeDeep,
   resolveNodeProps,
 } from "./defaults";
 import { findNode, findParent, indexOfNode, isSelfOrDescendant, nodePath } from "./tree";
-import { SCHEMA_VERSION, type Fill } from "./types";
+import { type Fill, SCHEMA_VERSION } from "./types";
 
 function solid(fill: Fill | null): string | null {
   return fill && fill.type === "solid" ? fill.color : null;
@@ -23,6 +23,7 @@ describe("createProject", () => {
     expect(project.version).toBe(1);
     expect(project.breakpoints).toEqual(DEFAULT_BREAKPOINTS);
     expect(project.pages).toHaveLength(1);
+    expect(project.colorStyles).toEqual([]);
 
     const page = project.pages[0]!;
     expect(page.path).toBe("/");
@@ -66,6 +67,29 @@ describe("responsive resolution", () => {
     expect(solid(desktop.style.fill)).toBe("#111111");
     expect(solid(tablet.style.fill)).toBe("#111111");
     expect(solid(phone.style.fill)).toBe("#222222");
+  });
+
+  it("keeps color style links when responsive overrides merge", () => {
+    const frame = createFrame({
+      props: {
+        style: { fill: { type: "solid", color: "#111111", opacity: 1, styleId: "color_1" } },
+      },
+    });
+    frame.responsive.overrides.bp_phone = {
+      style: { fill: { type: "solid", color: "#222222", opacity: 1 } },
+    };
+
+    const phoneFill = resolveNodeProps(frame, "bp_phone", DEFAULT_BREAKPOINTS).style.fill;
+    if (phoneFill?.type !== "solid") throw new Error("Expected a solid fill");
+    expect(phoneFill.styleId).toBe("color_1");
+    expect(phoneFill.color).toBe("#222222");
+
+    const text = createText({ props: { colorStyleId: "color_1" } });
+    text.responsive.overrides.bp_tablet = { text: { color: "#333333" } };
+
+    const tablet = resolveNodeProps(text, "bp_tablet", DEFAULT_BREAKPOINTS);
+    expect(tablet.colorStyleId).toBe("color_1");
+    expect(tablet.text.color).toBe("#333333");
   });
 
   it("replaces arrays instead of concatenating them", () => {

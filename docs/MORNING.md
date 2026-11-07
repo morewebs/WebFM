@@ -43,6 +43,16 @@ and property controls: expose text content/color/size, alt text, visible or
 opacity; instance controls with purple override state and reset. Published
 instances render their variant and property values.
 
+**Color styles** — Assets now lists saved **Colors** (create, inline
+rename/recolor, delete, usage counts). Apply one to the selection, or from the
+Fill/Typography editors; linked solid fills and text colors show a badge and
+**Detach**. Editing a style propagates across pages and component variants;
+colors stay denormalized so Preview and publish need no lookup. Creating a
+style from a layer links it; opacity is editable. Verified in Chrome,
+including propagation, detach, undo, reload and published CSS. An
+adversarial review then fixed intermediate-breakpoint propagation, no-op undo
+entries and breakpoint text detach.
+
 **Breakpoints** — add a custom breakpoint with the breakpoint bar + (name and
 width; narrower than the primary), switch, and remove non-primary breakpoints;
 page roots get width overrides and dead overrides are cleaned up. Verified in

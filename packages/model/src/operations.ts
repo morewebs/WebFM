@@ -19,10 +19,12 @@ import {
   mergeDeep,
 } from "./defaults";
 import { createId } from "./ids";
-import { findComponentInstances } from "./tree";
+import { findComponentInstances, walkNode } from "./tree";
 import type {
   BoxProps,
   BreakpointId,
+  ColorStyle,
+  ColorStyleId,
   ComponentDefinition,
   ComponentId,
   ComponentInstanceNode,
@@ -582,9 +584,7 @@ export function wrapNodes(draft: Draft<Project>, options: WrapNodesOptions): Nod
       },
       style: { fill: null, overflow: "visible" },
       layout:
-        options.kind === "stack"
-          ? { mode: "stack", direction: "vertical" }
-          : { mode: "none" },
+        options.kind === "stack" ? { mode: "stack", direction: "vertical" } : { mode: "none" },
     },
     children: moved,
   });
@@ -611,9 +611,7 @@ export function unwrapNode(draft: Draft<Project>, options: UnwrapNodeOptions): N
     throw new Error(`Cannot remove the ${describeRootNode(options)} node "${options.nodeId}".`);
   }
   if (node.type !== "frame") {
-    throw new Error(
-      `Cannot remove node "${options.nodeId}": it is a ${node.type}, not a frame.`,
-    );
+    throw new Error(`Cannot remove node "${options.nodeId}": it is a ${node.type}, not a frame.`);
   }
 
   const parent = findParentDraft(root, options.nodeId);
@@ -1275,6 +1273,222 @@ export function setComponentBinding(
   } else {
     component.bindings[index] = castDraft({ ...options.binding });
   }
+}
+
+/* -------------------------------------------------------------- color styles */
+
+/** Input for `addColorStyle`. The caller normally generates a unique name. */
+export interface ColorStyleInput {
+  name: string;
+  color: string;
+  opacity: number;
+  id?: ColorStyleId;
+}
+
+/** Fields `updateColorStyle` may change. Omitted fields keep their value. */
+export interface ColorStylePatch {
+  name?: string;
+  color?: string;
+  opacity?: number;
+}
+
+function normalizeColorStyleName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) throw new Error("Color style name cannot be empty.");
+  return trimmed;
+}
+
+function normalizeColorStyleColor(color: string): string {
+  const trimmed = color.trim();
+  if (trimmed.length === 0) throw new Error("Color style color cannot be empty.");
+  return trimmed;
+}
+
+function normalizeColorStyleOpacity(opacity: number): number {
+  if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
+    throw new Error(`Color style opacity must be from 0 to 1, received ${String(opacity)}.`);
+  }
+  return opacity;
+}
+
+function assertUniqueColorStyleName(
+  project: Draft<Project>,
+  name: string,
+  excludeId?: ColorStyleId,
+): void {
+  const key = name.trim().toLowerCase();
+  const clash = project.colorStyles.some(
+    (style) => style.id !== excludeId && style.name.trim().toLowerCase() === key,
+  );
+  if (clash) throw new Error(`A color style named "${name}" already exists.`);
+}
+
+/** Visits every page root and every component variant root. */
+function walkProjectNodes(
+  project: Draft<Project>,
+  visitor: (node: Draft<SceneNode>) => void,
+): void {
+  for (const page of project.pages) walkDraftNode(page.root, visitor);
+  for (const component of project.components) {
+    for (const variant of component.variants) walkDraftNode(variant.root, visitor);
+  }
+}
+
+/**
+ * Visits the base props and every breakpoint override of a node. Style links
+ * live in `base` and may also be present in a sparse override, so propagation
+ * and detaching must cover both.
+ */
+function forEachBoxLayer(
+  node: Draft<SceneNode>,
+  visitor: (props: DeepPartial<BoxProps & TextProps>) => void,
+): void {
+  const responsive = node.responsive as unknown as {
+    base: BoxProps & TextProps;
+    overrides: Record<BreakpointId, DeepPartial<BoxProps & TextProps> | undefined>;
+  };
+  visitor(responsive.base);
+  for (const override of Object.values(responsive.overrides)) {
+    if (override) visitor(override);
+  }
+}
+
+function getColorStyleOrThrow(project: Draft<Project>, id: ColorStyleId): Draft<ColorStyle> {
+  const style = project.colorStyles.find((candidate) => candidate.id === id);
+  if (!style) throw new Error(`Color style "${id}" was not found.`);
+  return style;
+}
+
+/**
+ * Adds a color style and returns its id. Names are trimmed and must be unique
+ * (case-insensitive); `color` and `opacity` are validated.
+ */
+export function addColorStyle(draft: Draft<Project>, input: ColorStyleInput): ColorStyleId {
+  const name = normalizeColorStyleName(input.name);
+  const color = normalizeColorStyleColor(input.color);
+  const opacity = normalizeColorStyleOpacity(input.opacity);
+  assertUniqueColorStyleName(draft, name);
+
+  const id = input.id ?? createId("color");
+  if (draft.colorStyles.some((style) => style.id === id)) {
+    throw new Error(`Color style id "${id}" is already used.`);
+  }
+  draft.colorStyles.push({ id, name, color, opacity });
+  return id;
+}
+
+/**
+ * Updates a color style and pushes the resolved color/opacity into every solid
+ * fill and text color that references it, across all pages and component
+ * variants (including breakpoint overrides). One caller operation = one entry.
+ */
+export function updateColorStyle(
+  draft: Draft<Project>,
+  id: ColorStyleId,
+  patch: ColorStylePatch,
+): void {
+  const style = getColorStyleOrThrow(draft, id);
+
+  if (patch.name !== undefined) {
+    const name = normalizeColorStyleName(patch.name);
+    assertUniqueColorStyleName(draft, name, id);
+    style.name = name;
+  }
+  if (patch.color !== undefined) style.color = normalizeColorStyleColor(patch.color);
+  if (patch.opacity !== undefined) style.opacity = normalizeColorStyleOpacity(patch.opacity);
+
+  // Only color and opacity are denormalized into usages; a rename needs no walk.
+  if (patch.color === undefined && patch.opacity === undefined) return;
+
+  const { color, opacity } = style;
+  walkProjectNodes(draft, (node) => {
+    const responsive = node.responsive as unknown as {
+      base: BoxProps & TextProps;
+      overrides: Record<BreakpointId, DeepPartial<BoxProps & TextProps> | undefined>;
+    };
+    const baseFill = responsive.base.style.fill;
+    // Follow the same widest-to-narrowest cascade the renderer uses: an
+    // override may introduce a link, carry it forward, or detach with null.
+    let fillLinked = baseFill?.type === "solid" && baseFill.styleId === id;
+    let textLinked = node.type === "text" && responsive.base.colorStyleId === id;
+
+    if (fillLinked && baseFill?.type === "solid") {
+      baseFill.color = color;
+      baseFill.opacity = opacity;
+    }
+    if (textLinked) responsive.base.text = { ...responsive.base.text, color };
+
+    for (const breakpoint of draft.breakpoints.slice(1)) {
+      const override = responsive.overrides[breakpoint.id];
+      if (!override) continue;
+
+      const fill = override.style?.fill;
+      if (fill) {
+        if (fill.type === "solid") {
+          if (fill.styleId === id) fillLinked = true;
+          else if (fill.styleId === null) fillLinked = false;
+          // `undefined` inherits the link state from the previous breakpoint.
+          if (fillLinked) {
+            fill.color = color;
+            fill.opacity = opacity;
+          }
+        } else {
+          // A gradient/image override replaces the fill, so the link stops here.
+          fillLinked = false;
+        }
+      }
+
+      if (node.type === "text") {
+        if (override.colorStyleId === id) textLinked = true;
+        else if (override.colorStyleId === null) textLinked = false;
+        if (textLinked) override.text = { ...(override.text ?? {}), color };
+      }
+    }
+  });
+}
+
+/**
+ * Deletes a color style and clears every reference. Linked fills and text keep
+ * their last denormalized color, so there are no dangling ids and nothing
+ * changes visually.
+ */
+export function removeColorStyle(draft: Draft<Project>, id: ColorStyleId): void {
+  getColorStyleOrThrow(draft, id);
+  const index = draft.colorStyles.findIndex((style) => style.id === id);
+  if (index !== -1) draft.colorStyles.splice(index, 1);
+
+  walkProjectNodes(draft, (node) => {
+    forEachBoxLayer(node, (props) => {
+      const fill = props.style?.fill;
+      if (fill?.type === "solid" && fill.styleId === id) fill.styleId = null;
+      if (node.type === "text" && props.colorStyleId === id) props.colorStyleId = null;
+    });
+  });
+}
+
+/**
+ * Number of layers that reference a style. A node counts once even when both
+ * its base and a breakpoint override carry the link.
+ */
+export function countColorStyleUsages(project: Project, id: ColorStyleId): number {
+  let count = 0;
+  const scan = (root: SceneNode): void => {
+    walkNode(root, (node) => {
+      let linked = false;
+      forEachBoxLayer(node as Draft<SceneNode>, (props) => {
+        const fill = props.style?.fill;
+        if (fill?.type === "solid" && fill.styleId === id) linked = true;
+        if (node.type === "text" && props.colorStyleId === id) linked = true;
+      });
+      if (linked) count += 1;
+    });
+  };
+
+  for (const page of project.pages) scan(page.root);
+  for (const component of project.components) {
+    for (const variant of component.variants) scan(variant.root);
+  }
+  return count;
 }
 
 /* --------------------------------------------------------------------- pages */

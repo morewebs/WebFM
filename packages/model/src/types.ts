@@ -13,6 +13,7 @@ export type ComponentId = string;
 export type VariantId = string;
 export type AssetId = string;
 export type PropertyId = string;
+export type ColorStyleId = string;
 
 export type ISODateString = string;
 
@@ -33,7 +34,22 @@ export interface Project {
   pages: Page[];
   components: ComponentDefinition[];
   assets: Asset[];
+  /**
+   * Project-wide saved colors. Solid fills and text colors may reference one
+   * through `styleId` / `colorStyleId`, but keep their own color and opacity so
+   * rendering and publishing never need a project lookup.
+   */
+  colorStyles: ColorStyle[];
   publish?: PublishConfig;
+}
+
+export interface ColorStyle {
+  id: ColorStyleId;
+  name: string;
+  /** Hex color, e.g. "#0099ff". */
+  color: string;
+  /** 0..1 */
+  opacity: number;
 }
 
 export interface Breakpoint {
@@ -233,7 +249,13 @@ export interface GradientStop {
 }
 
 export type Fill =
-  | { type: "solid"; color: string; opacity: number }
+  | {
+      type: "solid";
+      color: string;
+      opacity: number;
+      /** Linked color style; null/absent means unlinked. */
+      styleId?: ColorStyleId | null;
+    }
   | { type: "linear-gradient"; angle: number; stops: GradientStop[] }
   | { type: "radial-gradient"; stops: GradientStop[] }
   | {
@@ -284,6 +306,8 @@ export interface StyleProps {
 
 export interface TextProps {
   text: TextContent;
+  /** Linked color style for the text color; null/absent means unlinked. */
+  colorStyleId?: ColorStyleId | null;
 }
 
 export interface TextContent {

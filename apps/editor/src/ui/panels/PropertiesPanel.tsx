@@ -16,6 +16,7 @@ import {
   type BoxProps,
   type Breakpoint,
   type BreakpointId,
+  type ColorStyle,
   type ComponentDefinition,
   type ComponentInstanceNode,
   type ComponentProperty,
@@ -618,6 +619,10 @@ interface FillRowProps {
   resolveAssetUrl?: (assetId: string) => string | null;
   ariaLabel?: string;
   assets?: Asset[];
+  /** Saved project colors offered inside the solid fill editor. */
+  colorStyles?: ColorStyle[];
+  onApplyColorStyle?: (style: ColorStyle) => void;
+  onDetachColorStyle?: () => void;
 }
 
 interface GradientStopsEditorProps {
@@ -706,6 +711,9 @@ function FillRow({
   resolveAssetUrl,
   ariaLabel = "Fill",
   assets = [],
+  colorStyles = [],
+  onApplyColorStyle,
+  onDetachColorStyle,
 }: FillRowProps) {
   const uploadAsset = useProjectStore((state) => state.uploadAsset);
   const [expanded, setExpanded] = useState(false);
@@ -764,6 +772,13 @@ function FillRow({
       ? assets.find((asset) => asset.id === fill.assetId)
       : undefined;
   const imageAssets = assets.filter((asset) => asset.mimeType.startsWith("image/"));
+  // A linked solid fill shows its style name instead of the raw hex, matching
+  // Framer's Fill row.
+  const linkedColorStyle =
+    fill.type === "solid" && fill.styleId
+      ? colorStyles.find((style) => style.id === fill.styleId)
+      : undefined;
+  const summaryText = linkedColorStyle?.name ?? fillSummaryText(fill, assets);
 
   return (
     <>
@@ -774,11 +789,11 @@ function FillRow({
           className="wfm-style-value wfm-pp__fill-summary"
           title="Edit fill"
           aria-expanded={expanded}
-          aria-label={`${ariaLabel}: ${fillSummaryText(fill, assets)}`}
+          aria-label={`${ariaLabel}: ${summaryText}`}
           onClick={() => setExpanded((current) => !current)}
         >
           <span className="wfm-swatch" style={resolveFillStyles(fill, resolveAssetUrl)} />
-          <span className="wfm-pp__value-text">{fillSummaryText(fill, assets)}</span>
+          <span className="wfm-pp__value-text">{summaryText}</span>
           <Icon
             name="chevron-right"
             size={10}
@@ -855,6 +870,52 @@ function FillRow({
                   className="wfm-pp__fill-number"
                 />
               </div>
+
+              {colorStyles.length > 0 ? (
+                <div className="wfm-pp__fill-control">
+                  <span className="wfm-pp__fill-label">Styles</span>
+                  <div className="wfm-pp__color-styles">
+                    {colorStyles.map((style) => (
+                      <button
+                        key={style.id}
+                        type="button"
+                        className={`wfm-pp__color-style${
+                          fill.styleId === style.id ? " is-linked" : ""
+                        }`}
+                        title={`Apply ${style.name}`}
+                        aria-label={`Apply ${style.name}`}
+                        aria-pressed={fill.styleId === style.id}
+                        onClick={() => onApplyColorStyle?.(style)}
+                      >
+                        <span
+                          className="wfm-pp__color-style-swatch"
+                          style={resolveFillStyles({
+                            type: "solid",
+                            color: style.color,
+                            opacity: style.opacity,
+                          })}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {fill.styleId ? (
+                <div className="wfm-pp__fill-control">
+                  <span className="wfm-pp__fill-label" />
+                  <span className="wfm-pp__linked-color">
+                    <Icon name="link" size={11} />
+                    <span className="wfm-pp__value-text">
+                      {colorStyles.find((style) => style.id === fill.styleId)?.name ??
+                        "Linked color style"}
+                    </span>
+                    <button type="button" className="wfm-pp__detach" onClick={onDetachColorStyle}>
+                      Detach
+                    </button>
+                  </span>
+                </div>
+              ) : null}
             </>
           ) : null}
 
@@ -1385,6 +1446,7 @@ interface TypographySectionProps {
 
 function TypographySection({ node, breakpointId, breakpoints }: TypographySectionProps) {
   const updateText = useProjectStore((state) => state.updateText);
+  const project = useProjectStore((state) => state.project);
 
   if (node.type !== "text") {
     return (
@@ -1424,6 +1486,10 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
 
   const props = resolveNodeProps<BoxProps & TextProps>(node, breakpointId, breakpoints);
   const text = props.text;
+  const colorStyles = project?.colorStyles ?? [];
+  const linkedColorStyle = props.colorStyleId
+    ? colorStyles.find((style) => style.id === props.colorStyleId)
+    : undefined;
   const lineHeightAuto = text.lineHeight === "auto";
   const lineHeightValue = text.lineHeight === "auto" ? null : text.lineHeight;
 
@@ -1560,15 +1626,78 @@ function TypographySection({ node, breakpointId, breakpoints }: TypographySectio
             className="wfm-pp__swatch"
             value={colorInputValue(text.color)}
             aria-label="Text color"
-            onChange={(event) => updateText(node.id, { text: { color: event.target.value } })}
+            onChange={(event) =>
+              updateText(node.id, {
+                text: { color: event.target.value },
+                colorStyleId: null,
+              })
+            }
           />
           <HexField
             color={text.color}
-            onCommit={(color) => updateText(node.id, { text: { color } })}
+            onCommit={(color) => updateText(node.id, { text: { color }, colorStyleId: null })}
             ariaLabel="Text color hex"
           />
         </span>
       </div>
+
+      {colorStyles.length > 0 ? (
+        <div className="wfm-row">
+          <span className="wfm-row__label">Styles</span>
+          <div className="wfm-pp__color-styles">
+            {colorStyles.map((style) => (
+              <button
+                key={style.id}
+                type="button"
+                className={`wfm-pp__color-style${
+                  props.colorStyleId === style.id ? " is-linked" : ""
+                }`}
+                title={`Apply ${style.name}`}
+                aria-label={`Apply ${style.name}`}
+                aria-pressed={props.colorStyleId === style.id}
+                onClick={() =>
+                  updateText(node.id, {
+                    text: { color: style.color },
+                    colorStyleId: style.id,
+                  })
+                }
+              >
+                <span
+                  className="wfm-pp__color-style-swatch"
+                  style={resolveFillStyles({
+                    type: "solid",
+                    color: style.color,
+                    opacity: style.opacity,
+                  })}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {props.colorStyleId ? (
+        <div className="wfm-row">
+          <span className="wfm-row__label" />
+          <span className="wfm-pp__linked-color">
+            <Icon name="link" size={11} />
+            <span className="wfm-pp__value-text">
+              {linkedColorStyle?.name ?? "Linked color style"}
+            </span>
+            <button
+              type="button"
+              className="wfm-pp__detach"
+              onClick={() =>
+                // Freeze the resolved color at this breakpoint, like the fill
+                // Detach, so later style edits cannot flow through the base.
+                updateText(node.id, { text: { color: text.color }, colorStyleId: null })
+              }
+            >
+              Detach
+            </button>
+          </span>
+        </div>
+      ) : null}
 
       <div className="wfm-row">
         <span className="wfm-row__label">Align</span>
@@ -2012,10 +2141,31 @@ function StylesSection({ nodeId, style, project }: StylesSectionProps) {
       {visible.includes("fill") ? (
         <FillRow
           fill={style.fill}
-          onSet={(fill) => write({ fill })}
+          onSet={(fill) => {
+            // Editing a solid fill manually detaches it from its color style.
+            // The current color and opacity are kept.
+            if (fill.type === "solid") write({ fill: { ...fill, styleId: null } });
+            else write({ fill });
+          }}
           onClear={() => write({ fill: null })}
           resolveAssetUrl={resolveAssetUrl}
           assets={project.assets}
+          colorStyles={project.colorStyles}
+          onApplyColorStyle={(colorStyle) =>
+            write({
+              fill: {
+                type: "solid",
+                color: colorStyle.color,
+                opacity: colorStyle.opacity,
+                styleId: colorStyle.id,
+              },
+            })
+          }
+          onDetachColorStyle={() => {
+            if (style.fill?.type === "solid") {
+              write({ fill: { ...style.fill, styleId: null } });
+            }
+          }}
         />
       ) : null}
 

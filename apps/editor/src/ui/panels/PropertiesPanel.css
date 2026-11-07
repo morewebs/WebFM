@@ -261,6 +261,69 @@
   cursor: default;
 }
 
+/* ---------------------------------------------------- linked colour styles */
+
+.wfm-pp__color-styles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.wfm-pp__color-style {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border-radius: 50%;
+}
+
+.wfm-pp__color-style:hover {
+  background: rgb(255 255 255 / 10%);
+}
+
+.wfm-pp__color-style.is-linked {
+  box-shadow: 0 0 0 1px var(--wfm-accent);
+}
+
+.wfm-pp__color-style-swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 50%;
+}
+
+.wfm-pp__linked-color {
+  flex: 1;
+  min-width: 0;
+  height: var(--wfm-control-h);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-surface);
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+}
+
+.wfm-pp__detach {
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--wfm-text-dim);
+  font-size: 11px;
+}
+
+.wfm-pp__detach:hover {
+  background: rgb(255 255 255 / 10%);
+  color: var(--wfm-text);
+}
+
 /* ------------------------------------------------------- opacity and switches */
 
 .wfm-pp__slider {

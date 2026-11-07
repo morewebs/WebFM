@@ -10,12 +10,16 @@
 import type { Asset } from "@webfm/model";
 import {
   addBreakpoint as addBreakpointOperation,
+  addColorStyle as addColorStyleOperation,
   addComponentVariant as addComponentVariantOperation,
   addGuide as addGuideOperation,
   applyOperation,
   type BoxProps,
   type Breakpoint,
   type BreakpointId,
+  type ColorStyle,
+  type ColorStyleId,
+  type ColorStylePatch,
   type ComponentDefinition,
   type ComponentId,
   type ComponentVariant,
@@ -35,11 +39,13 @@ import {
   insertNode as insertNodeOperation,
   isSelfOrDescendant,
   type NodeId,
+  normalizeProject,
   type Page,
   type PageId,
   type Project,
   redo as redoHistory,
   removeBreakpoint as removeBreakpointOperation,
+  removeColorStyle as removeColorStyleOperation,
   removeGuide as removeGuideOperation,
   removeNode,
   renameComponent as renameComponentOperation,
@@ -53,6 +59,7 @@ import {
   undo as undoHistory,
   unwrapNode,
   updateBoxProps,
+  updateColorStyle as updateColorStyleOperation,
   updateGuide as updateGuideOperation,
   updateImageProps,
   updateTextProps,
@@ -61,12 +68,7 @@ import {
 } from "@webfm/model";
 import type { Draft } from "immer";
 import { create, type StoreApi, type UseBoundStore } from "zustand";
-import {
-  ApiError,
-  api as defaultApi,
-  type ProjectApi,
-  type PublishResponse,
-} from "../api/client";
+import { ApiError, api as defaultApi, type ProjectApi, type PublishResponse } from "../api/client";
 
 export type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -141,11 +143,7 @@ export interface ProjectStoreState {
   setHovered(nodeId: NodeId | null): void;
   setZoom(zoom: number): void;
   setPan(pan: Pan): void;
-  applyRecipe(
-    label: string,
-    recipe: (draft: Draft<Project>) => void,
-    coalesceKey?: string,
-  ): void;
+  applyRecipe(label: string, recipe: (draft: Draft<Project>) => void, coalesceKey?: string): void;
   updateBox(nodeId: NodeId, patch: DeepPartial<BoxProps>, breakpointId?: BreakpointId): void;
   setNodePositions(updates: Array<{ nodeId: NodeId; x: number; y: number }>, label?: string): void;
   updateText(nodeId: NodeId, patch: DeepPartial<TextProps>): void;
@@ -173,6 +171,18 @@ export interface ProjectStoreState {
   setInstanceVariant(nodeId: NodeId, variantId: VariantId): void;
   renameComponentVariant(variantId: VariantId, name: string): void;
   renameComponent(componentId: ComponentId, name: string): void;
+  /**
+   * Adds a project color style. When `fromSelection` is true and the selected
+   * layer has a solid fill or text color, that color seeds the new style;
+   * otherwise it defaults to #0099ff at full opacity.
+   */
+  createColorStyle(fromSelection?: boolean): ColorStyleId | null;
+  /** Edits a color style and propagates the value to every linked usage. */
+  updateColorStyle(id: ColorStyleId, patch: ColorStylePatch): boolean;
+  /** Deletes a color style and detaches every linked usage without recoloring. */
+  removeColorStyle(id: ColorStyleId): void;
+  /** Applies a color style to the selected layer(s) in the active scene. */
+  applyColorStyle(id: ColorStyleId): boolean;
   undo(): void;
   redo(): void;
   saveNow(): Promise<void>;
@@ -313,6 +323,16 @@ function autoTextName(content: string): string {
   return name.length > 0 ? name : "Text";
 }
 
+const DEFAULT_COLOR_STYLE = { color: "#0099ff", opacity: 1 } as const;
+
+/** "Color 1", "Color 2", … skipping names already in the project. */
+function uniqueColorStyleName(styles: ColorStyle[]): string {
+  const taken = new Set(styles.map((style) => style.name.trim().toLowerCase()));
+  let index = 1;
+  while (taken.has(`color ${index}`)) index += 1;
+  return `Color ${index}`;
+}
+
 export type ProjectStore = UseBoundStore<StoreApi<ProjectStoreState>>;
 
 export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
@@ -337,11 +357,12 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
 
     const activateProject = (project: Project): void => {
       cancelScheduledSave();
-      const page = project.pages[0] ?? null;
-      const breakpoint = project.breakpoints[0] ?? null;
+      const normalized = normalizeProject(project);
+      const page = normalized.pages[0] ?? null;
+      const breakpoint = normalized.breakpoints[0] ?? null;
       set({
-        project,
-        history: newHistory(project),
+        project: normalized,
+        history: newHistory(normalized),
         activePageId: page?.id ?? "",
         activeBreakpointId: breakpoint?.id ?? "",
         editingComponent: null,
@@ -730,11 +751,8 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         if (nextContent !== undefined) {
           const node = findNode(scene.root, nodeId);
           if (node?.type === "text") {
-            const currentContent = resolveNodeProps(
-              node,
-              breakpointId,
-              project.breakpoints,
-            ).text.content;
+            const currentContent = resolveNodeProps(node, breakpointId, project.breakpoints).text
+              .content;
             if (nextContent !== currentContent && isAutoTextName(node.name, currentContent)) {
               autoName = autoTextName(nextContent);
             }
@@ -967,6 +985,193 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
       renameComponent(componentId, name) {
         applyRecipe("Rename component", (draft) => {
           renameComponentOperation(draft, { componentId, name });
+        });
+      },
+
+      createColorStyle(fromSelection = true) {
+        const state = get();
+        const project = state.project;
+        const scene = currentScene();
+        if (!project) return null;
+
+        let seed: { color: string; opacity: number } = { ...DEFAULT_COLOR_STYLE };
+        // Creating a style from a layer links that layer to the new style, the
+        // way Framer does when a style is saved from the color picker.
+        let seedTarget: { nodeId: NodeId; type: "frame" | "text" } | null = null;
+        if (fromSelection && scene) {
+          const selectedId = state.selection[0];
+          const node = selectedId ? findNode(scene.root, selectedId) : null;
+          if (node?.type === "text") {
+            const props = resolveNodeProps<BoxProps & TextProps>(
+              node,
+              state.activeBreakpointId,
+              project.breakpoints,
+            );
+            seed = { color: props.text.color, opacity: 1 };
+            seedTarget = { nodeId: node.id, type: "text" };
+          } else if (node?.type === "frame") {
+            const props = resolveNodeProps<BoxProps>(
+              node,
+              state.activeBreakpointId,
+              project.breakpoints,
+            );
+            if (props.style.fill?.type === "solid") {
+              seed = { color: props.style.fill.color, opacity: props.style.fill.opacity };
+              seedTarget = { nodeId: node.id, type: "frame" };
+            }
+          }
+        }
+
+        const name = uniqueColorStyleName(project.colorStyles);
+        const breakpointId = state.activeBreakpointId;
+        return applyRecipeWithResult("Create color style", (draft) => {
+          const id = addColorStyleOperation(draft, { name, ...seed });
+          if (seedTarget && scene) {
+            if (seedTarget.type === "text") {
+              updateTextProps(
+                draft,
+                withTarget(scene.target, {
+                  nodeId: seedTarget.nodeId,
+                  breakpointId,
+                  patch: {
+                    text: { color: seed.color },
+                    colorStyleId: id,
+                  },
+                }),
+              );
+            } else {
+              updateBoxProps(
+                draft,
+                withTarget(scene.target, {
+                  nodeId: seedTarget.nodeId,
+                  breakpointId,
+                  patch: {
+                    style: {
+                      fill: {
+                        type: "solid",
+                        color: seed.color,
+                        opacity: seed.opacity,
+                        styleId: id,
+                      },
+                    },
+                  },
+                }),
+              );
+            }
+          }
+          return id;
+        });
+      },
+
+      updateColorStyle(id, patch) {
+        const style = get().project?.colorStyles.find((candidate) => candidate.id === id);
+        if (style) {
+          const nextName = patch.name === undefined ? style.name : patch.name.trim();
+          const nextColor = patch.color === undefined ? style.color : patch.color.trim();
+          const nextOpacity = patch.opacity === undefined ? style.opacity : patch.opacity;
+          // Saving an unchanged inline editor must not create an undo step.
+          if (
+            nextName === style.name &&
+            nextColor === style.color &&
+            nextOpacity === style.opacity
+          ) {
+            return true;
+          }
+        }
+        return runRecipe("Update color style", (draft) => {
+          updateColorStyleOperation(draft, id, patch);
+        });
+      },
+
+      removeColorStyle(id) {
+        applyRecipe("Remove color style", (draft) => {
+          removeColorStyleOperation(draft, id);
+        });
+      },
+
+      applyColorStyle(id) {
+        const state = get();
+        const scene = currentScene();
+        const project = state.project;
+        if (!scene || !project) {
+          set({ error: "Open a page before applying a color style." });
+          return false;
+        }
+        const style = project.colorStyles.find((candidate) => candidate.id === id);
+        if (!style) {
+          set({ error: `Color style "${id}" was not found.` });
+          return false;
+        }
+
+        const targets = state.selection.flatMap((nodeId) => {
+          const node = findNode(scene.root, nodeId);
+          if (!node) return [];
+          if (node.type !== "frame" && node.type !== "text") return [];
+          return [{ nodeId, type: node.type }];
+        });
+        if (targets.length === 0) {
+          set({ error: "Select a frame or text layer to apply a color style." });
+          return false;
+        }
+
+        const breakpointId = state.activeBreakpointId;
+        const alreadyApplied = targets.every((target) => {
+          const node = findNode(scene.root, target.nodeId);
+          if (node?.type === "text") {
+            const props = resolveNodeProps<BoxProps & TextProps>(
+              node,
+              breakpointId,
+              project.breakpoints,
+            );
+            return props.colorStyleId === style.id && props.text.color === style.color;
+          }
+          if (node?.type !== "frame") return false;
+          const fill = resolveNodeProps<BoxProps>(node, breakpointId, project.breakpoints).style
+            .fill;
+          return (
+            fill?.type === "solid" &&
+            fill.styleId === style.id &&
+            fill.color === style.color &&
+            fill.opacity === style.opacity
+          );
+        });
+        // Clicking an already-applied swatch should not add an undo step.
+        if (alreadyApplied) return true;
+
+        return runRecipe("Apply color style", (draft) => {
+          for (const target of targets) {
+            if (target.type === "text") {
+              updateTextProps(
+                draft,
+                withTarget(scene.target, {
+                  nodeId: target.nodeId,
+                  breakpointId,
+                  patch: {
+                    text: { color: style.color },
+                    colorStyleId: style.id,
+                  },
+                }),
+              );
+            } else {
+              updateBoxProps(
+                draft,
+                withTarget(scene.target, {
+                  nodeId: target.nodeId,
+                  breakpointId,
+                  patch: {
+                    style: {
+                      fill: {
+                        type: "solid",
+                        color: style.color,
+                        opacity: style.opacity,
+                        styleId: style.id,
+                      },
+                    },
+                  },
+                }),
+              );
+            }
+          }
         });
       },
 

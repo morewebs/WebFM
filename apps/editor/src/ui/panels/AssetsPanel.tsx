@@ -1,21 +1,43 @@
 /**
  * Assets tab.
  *
- * Lists the project's components above its image assets. Component cards insert
- * an instance (page mode only; the model is page-only for now) and offer an
- * Edit action that enters the main component. Image cards keep the upload
+ * Lists the project's components, color styles and image assets. Component
+ * cards insert an instance (page mode only; the model is page-only for now) and
+ * offer an Edit action that enters the main component. Color cards apply a
+ * saved style to the selection and edit it inline. Image cards keep the upload
  * endpoint and `createImage` insertion, so undo and autosave cover both paths
  * like any other edit.
  */
 
-import { type Asset, createImage, findComponentInstances } from "@webfm/model";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import {
+  type Asset,
+  type ColorStyle,
+  countColorStyleUsages,
+  createImage,
+  findComponentInstances,
+} from "@webfm/model";
+import { resolveFillStyles } from "@webfm/render";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../../state/project-store";
 import { Icon } from "../icons";
 import "./AssetsPanel.css";
 
 function isImage(asset: Asset): boolean {
   return asset.mimeType.startsWith("image/");
+}
+
+/** Native color input wants a six-digit hex value. */
+function colorInputValue(color: string): string {
+  const trimmed = color.trim();
+  if (/^#[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toLowerCase();
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    const digits = trimmed.slice(1);
+    return `#${digits
+      .split("")
+      .map((digit) => digit + digit)
+      .join("")}`.toLowerCase();
+  }
+  return "#000000";
 }
 
 export function AssetsPanel() {
@@ -25,14 +47,103 @@ export function AssetsPanel() {
   const insertNode = useProjectStore((state) => state.insertNode);
   const insertComponentInstance = useProjectStore((state) => state.insertComponentInstance);
   const enterComponent = useProjectStore((state) => state.enterComponent);
+  const createColorStyle = useProjectStore((state) => state.createColorStyle);
+  const updateColorStyle = useProjectStore((state) => state.updateColorStyle);
+  const removeColorStyle = useProjectStore((state) => state.removeColorStyle);
+  const applyColorStyle = useProjectStore((state) => state.applyColorStyle);
 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [colorError, setColorError] = useState<string | null>(null);
+  const [editingColorId, setEditingColorId] = useState<string | null>(null);
+  const [editingColorName, setEditingColorName] = useState("");
+  const [editingColorValue, setEditingColorValue] = useState("#000000");
+  const [editingColorOpacity, setEditingColorOpacity] = useState("100");
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const assets = project?.assets ?? [];
   const components = project?.components ?? [];
+  const colorStyles = project?.colorStyles ?? [];
   const componentMode = editingComponent !== null;
+
+  // An open inline editor follows the saved style. Undo/redo or an external
+  // change re-seeds the drafts; deleting the style closes the editor.
+  const editingStyle = editingColorId
+    ? colorStyles.find((style) => style.id === editingColorId)
+    : undefined;
+  const editingStyleName = editingStyle?.name;
+  const editingStyleColor = editingStyle?.color;
+  const editingStyleOpacity = editingStyle?.opacity;
+  useEffect(() => {
+    if (!editingColorId) return;
+    if (
+      editingStyleName === undefined ||
+      editingStyleColor === undefined ||
+      editingStyleOpacity === undefined
+    ) {
+      setEditingColorId(null);
+      setColorError(null);
+      return;
+    }
+    setEditingColorName(editingStyleName);
+    setEditingColorValue(colorInputValue(editingStyleColor));
+    setEditingColorOpacity(String(Math.round(editingStyleOpacity * 100)));
+    setColorError(null);
+  }, [editingColorId, editingStyleName, editingStyleColor, editingStyleOpacity]);
+
+  // Usage counts scan every page and component variant, so derive once.
+  const colorUsageCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!project) return counts;
+    for (const style of project.colorStyles) {
+      counts.set(style.id, countColorStyleUsages(project, style.id));
+    }
+    return counts;
+  }, [project]);
+
+  const startEditColor = (style: ColorStyle): void => {
+    setEditingColorId(style.id);
+    setEditingColorName(style.name);
+    setEditingColorValue(colorInputValue(style.color));
+    setEditingColorOpacity(String(Math.round(style.opacity * 100)));
+    setColorError(null);
+  };
+
+  const cancelEditColor = (): void => {
+    setEditingColorId(null);
+    setColorError(null);
+  };
+
+  const commitEditColor = (): void => {
+    if (!editingColorId) return;
+    const name = editingColorName.trim();
+    if (name.length === 0) {
+      setColorError("Color name cannot be empty.");
+      return;
+    }
+    const rawOpacity = editingColorOpacity.trim();
+    if (rawOpacity.length === 0) {
+      setColorError("Opacity must be from 0 to 100.");
+      return;
+    }
+    const opacityPercent = Number(rawOpacity);
+    if (!Number.isFinite(opacityPercent) || opacityPercent < 0 || opacityPercent > 100) {
+      setColorError("Opacity must be from 0 to 100.");
+      return;
+    }
+    if (
+      !updateColorStyle(editingColorId, {
+        name,
+        color: editingColorValue,
+        opacity: opacityPercent / 100,
+      })
+    ) {
+      setColorError(useProjectStore.getState().error ?? "Could not update the color style.");
+      return;
+    }
+    setEditingColorId(null);
+    setColorError(null);
+  };
 
   // Instance counts scan the whole project, so derive them once per revision.
   const instanceCounts = useMemo(() => {
@@ -172,7 +283,173 @@ export function AssetsPanel() {
         </section>
       ) : null}
 
-      {components.length === 0 && assets.length === 0 ? (
+      <section className="wfm-assets__section" aria-label="Colors">
+        <div className="wfm-panel-section__header">
+          <span>Colors</span>
+          <button
+            type="button"
+            className="wfm-panel-add"
+            title="New color style"
+            aria-label="New color style"
+            onClick={() => {
+              setColorError(null);
+              createColorStyle();
+            }}
+          >
+            <Icon name="plus" size={12} />
+          </button>
+        </div>
+        {colorStyles.length === 0 ? (
+          <button
+            type="button"
+            className="wfm-assets__empty-add"
+            onClick={() => {
+              setColorError(null);
+              createColorStyle();
+            }}
+          >
+            <Icon name="plus" size={12} />
+            New color style
+          </button>
+        ) : (
+          <div className="wfm-assets__colors">
+            {colorStyles.map((style) => {
+              if (editingColorId === style.id) {
+                return (
+                  <div key={style.id} className="wfm-color-card is-editing">
+                    <input
+                      type="color"
+                      className="wfm-color-card__swatch-input"
+                      value={editingColorValue}
+                      aria-label={`${style.name} color`}
+                      onChange={(event) => setEditingColorValue(event.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="wfm-field wfm-color-card__name-input"
+                      value={editingColorName}
+                      aria-label="Color style name"
+                      autoFocus
+                      onChange={(event) => setEditingColorName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitEditColor();
+                        } else if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelEditColor();
+                        }
+                      }}
+                    />
+                    <input
+                      type="number"
+                      className="wfm-field wfm-color-card__opacity-input"
+                      value={editingColorOpacity}
+                      min={0}
+                      max={100}
+                      step={1}
+                      aria-label="Color style opacity"
+                      onChange={(event) => setEditingColorOpacity(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitEditColor();
+                        } else if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelEditColor();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="wfm-color-card__action"
+                      onClick={commitEditColor}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="wfm-color-card__action"
+                      title="Cancel"
+                      aria-label="Cancel color style edit"
+                      onClick={cancelEditColor}
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </div>
+                );
+              }
+
+              const usages = colorUsageCounts.get(style.id) ?? 0;
+              return (
+                <div key={style.id} className="wfm-color-card">
+                  <button
+                    type="button"
+                    className="wfm-color-card__main"
+                    onClick={() => {
+                      if (applyColorStyle(style.id)) {
+                        setColorError(null);
+                      } else {
+                        setColorError(
+                          useProjectStore.getState().error ??
+                            "Select a layer that can take this color.",
+                        );
+                      }
+                    }}
+                    title={`Apply ${style.name}`}
+                  >
+                    <span
+                      className="wfm-color-card__swatch"
+                      style={resolveFillStyles({
+                        type: "solid",
+                        color: style.color,
+                        opacity: style.opacity,
+                      })}
+                    />
+                    <span className="wfm-color-card__meta">
+                      <span className="wfm-color-card__name">{style.name}</span>
+                      <span className="wfm-color-card__stats">
+                        {usages} {usages === 1 ? "layer" : "layers"}
+                        {style.opacity < 1 ? ` · ${Math.round(style.opacity * 100)}%` : ""}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="wfm-color-card__actions">
+                    <button
+                      type="button"
+                      className="wfm-color-card__action"
+                      title={`Edit ${style.name}`}
+                      aria-label={`Edit ${style.name}`}
+                      onClick={() => startEditColor(style)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="wfm-color-card__action wfm-color-card__delete"
+                      title={`Delete ${style.name}`}
+                      aria-label={`Delete ${style.name}`}
+                      onClick={() => {
+                        if (editingColorId === style.id) cancelEditColor();
+                        removeColorStyle(style.id);
+                      }}
+                    >
+                      <Icon name="trash" size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {colorError ? (
+          <p className="wfm-assets__error" role="alert">
+            {colorError}
+          </p>
+        ) : null}
+      </section>
+
+      {components.length === 0 && assets.length === 0 && colorStyles.length === 0 ? (
         <p className="wfm-empty">No assets yet.</p>
       ) : null}
 
