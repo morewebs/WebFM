@@ -15,6 +15,7 @@ import {
   createImage,
   createText,
   type DeepPartial,
+  type Fill,
   findNode,
   findParent,
   isSelfOrDescendant,
@@ -212,7 +213,13 @@ export function nudgeDelta(key: string, step: number): CanvasPoint | null {
 
 export function isDrawTool(tool: EditorTool): boolean {
   return (
-    tool === "frame" || tool === "stack" || tool === "text" || tool === "image" || tool === "oval"
+    tool === "frame" ||
+    tool === "stack" ||
+    tool === "text" ||
+    tool === "image" ||
+    tool === "oval" ||
+    tool === "rectangle" ||
+    tool === "rounded"
   );
 }
 
@@ -314,6 +321,11 @@ const DEFAULT_IMAGE_SIZE: DeepPartial<BoxProps>["size"] = {
 };
 
 const OVAL_RADIUS = { topLeft: 9999, topRight: 9999, bottomRight: 9999, bottomLeft: 9999 };
+const RECTANGLE_RADIUS = { topLeft: 0, topRight: 0, bottomRight: 0, bottomLeft: 0 };
+const ROUNDED_RADIUS = { topLeft: 20, topRight: 20, bottomRight: 20, bottomLeft: 20 };
+
+/** Shape tools share a visible neutral fill so an empty shape reads on canvas. */
+const SHAPE_FILL: Fill = { type: "solid", color: "#e5e5e5", opacity: 1 };
 
 interface CreateGeometry {
   x: number;
@@ -351,7 +363,25 @@ function createNodeForTool(
         props: {
           position,
           size: fixedSize ?? DEFAULT_FRAME_SIZE,
-          style: { radius: OVAL_RADIUS },
+          style: { radius: OVAL_RADIUS, fill: SHAPE_FILL },
+        },
+      });
+    case "rectangle":
+      return createFrame({
+        name: "Rectangle",
+        props: {
+          position,
+          size: fixedSize ?? DEFAULT_FRAME_SIZE,
+          style: { radius: RECTANGLE_RADIUS, fill: SHAPE_FILL, overflow: "visible" },
+        },
+      });
+    case "rounded":
+      return createFrame({
+        name: "Rounded",
+        props: {
+          position,
+          size: fixedSize ?? DEFAULT_FRAME_SIZE,
+          style: { radius: ROUNDED_RADIUS, fill: SHAPE_FILL, overflow: "visible" },
         },
       });
     case "image":

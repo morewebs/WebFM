@@ -26,6 +26,7 @@ import {
   type Fill,
   findComponentInstances,
   findNode,
+  findParent,
   type GradientStop,
   type ImageFit,
   type ImageNode,
@@ -38,6 +39,7 @@ import {
   type LayoutProps,
   type NodeId,
   type NodeLocation,
+  type PositionMode,
   type Project,
   type PropertyBinding,
   removeComponentProperty,
@@ -70,18 +72,34 @@ import "./PropertiesPanel.css";
 const FONT_FAMILIES = ["Inter", "Arial", "Georgia", "Times New Roman", "Courier New"];
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 
-const SIZING_OPTIONS: Array<{ value: SizeMode | "viewport"; label: string; disabled?: boolean }> = [
+const SIZING_OPTIONS: Array<{ value: SizeMode; label: string }> = [
   { value: "fixed", label: "Fixed" },
   { value: "relative", label: "Relative" },
   { value: "fill", label: "Fill" },
   { value: "hug", label: "Fit Content" },
-  { value: "viewport", label: "Viewport", disabled: true },
+  { value: "viewport", label: "Viewport" },
 ];
 
 const OVERFLOW_OPTIONS = [
   { value: "clip", label: "Clip" },
   { value: "hidden", label: "Hidden" },
   { value: "visible", label: "Visible" },
+  { value: "scroll", label: "Scroll" },
+] as const;
+
+const OVERFLOW_AXIS_OPTIONS = [
+  { value: "", label: "Auto" },
+  { value: "clip", label: "Clip" },
+  { value: "hidden", label: "Hidden" },
+  { value: "visible", label: "Visible" },
+  { value: "scroll", label: "Scroll" },
+] as const;
+
+const POSITION_MODE_OPTIONS = [
+  { value: "relative", label: "Relative" },
+  { value: "absolute", label: "Absolute" },
+  { value: "fixed", label: "Fixed" },
+  { value: "sticky", label: "Sticky" },
 ] as const;
 
 const BORDER_STYLE_OPTIONS = [
@@ -230,7 +248,8 @@ function withCurrent<T>(options: readonly T[], current: T): T[] {
 }
 
 function numericSize(size: SizeValue): number | null {
-  return size.mode === "fixed" || size.mode === "relative" ? (size.value ?? 0) : null;
+  if (size.mode !== "fixed" && size.mode !== "relative" && size.mode !== "viewport") return null;
+  return size.value ?? (size.mode === "viewport" ? 100 : 0);
 }
 
 /* ---------------------------------------------------------- component props */
@@ -976,7 +995,20 @@ interface BreakpointSectionProps {
 
 function BreakpointSection({ nodeId, box }: BreakpointSectionProps) {
   const updateBox = useProjectStore((state) => state.updateBox);
+  const project = useProjectStore((state) => state.project);
+  const activePageId = useProjectStore((state) => state.activePageId);
+  const activeBreakpointId = useProjectStore((state) => state.activeBreakpointId);
+  const editingComponent = useProjectStore((state) => state.editingComponent);
   const [linked, setLinked] = useState(false);
+
+  const scene = activeSceneOf(project, activePageId, editingComponent);
+  const parent = scene && project ? findParent(scene.root, nodeId) : null;
+  const parentLayout =
+    parent && project
+      ? resolveNodeProps<BoxProps>(parent, activeBreakpointId, project.breakpoints).layout.mode
+      : "root";
+  const fallbackPositionMode: PositionMode = parentLayout === "none" ? "absolute" : "relative";
+  const positionMode = box.position.mode ?? fallbackPositionMode;
 
   const widthNumber = numericSize(box.size.width);
   const heightNumber = numericSize(box.size.height);
@@ -1005,15 +1037,71 @@ function BreakpointSection({ nodeId, box }: BreakpointSectionProps) {
 
   const writeMode = (axis: "width" | "height", mode: SizeMode) => {
     const current = box.size[axis];
-    const usesValue = mode === "fixed" || mode === "relative";
-    const next: SizeValue = usesValue
-      ? { mode, value: current.value ?? (mode === "relative" ? 100 : 0) }
-      : { mode };
+    let next: SizeValue;
+    if (mode === "viewport") {
+      next = { mode, value: current.mode === "viewport" ? (current.value ?? 100) : 100 };
+    } else if (mode === "fixed" || mode === "relative") {
+      next = { mode, value: current.value ?? (mode === "relative" ? 100 : 0) };
+    } else {
+      next = { mode };
+    }
     updateBox(nodeId, axis === "width" ? { size: { width: next } } : { size: { height: next } });
+  };
+
+  const clearSize = (key: "minWidth" | "maxWidth" | "minHeight" | "maxHeight") => {
+    updateBox(nodeId, { size: { [key]: null } });
+  };
+
+  const minMaxField = (
+    label: string,
+    key: "minWidth" | "maxWidth" | "minHeight" | "maxHeight",
+    unit: string,
+  ) => {
+    const value = box.size[key];
+    return (
+      <span className="wfm-pp__minmax-field">
+        <NumberField
+          value={value ?? null}
+          min={0}
+          onCommit={(next) => updateBox(nodeId, { size: { [key]: next } })}
+          ariaLabel={label}
+          className="wfm-pp__size-value"
+        />
+        <span className="wfm-pp__unit">{unit}</span>
+        <button
+          type="button"
+          className="wfm-pp__clear"
+          aria-label={`Clear ${label.toLowerCase()}`}
+          title={`Clear ${label.toLowerCase()}`}
+          disabled={value === undefined || value === null}
+          onClick={() => clearSize(key)}
+        >
+          <Icon name="close" size={10} />
+        </button>
+      </span>
+    );
   };
 
   return (
     <Section title="Breakpoint">
+      <div className="wfm-row">
+        <span className="wfm-row__label">Positioning</span>
+        <select
+          className="wfm-select wfm-row__grow"
+          value={positionMode}
+          aria-label="Positioning"
+          onChange={(event) =>
+            updateBox(nodeId, { position: { mode: event.target.value as PositionMode } })
+          }
+        >
+          {POSITION_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="wfm-row">
         <span className="wfm-row__label">Position</span>
         <NumberField
@@ -1048,7 +1136,7 @@ function BreakpointSection({ nodeId, box }: BreakpointSectionProps) {
             onChange={(event) => writeMode("width", event.target.value as SizeMode)}
           >
             {SIZING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value} disabled={option.disabled}>
+              <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
@@ -1086,11 +1174,24 @@ function BreakpointSection({ nodeId, box }: BreakpointSectionProps) {
             onChange={(event) => writeMode("height", event.target.value as SizeMode)}
           >
             {SIZING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value} disabled={option.disabled}>
+              <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="wfm-pp__minmax">
+          <div className="wfm-row">
+            <span className="wfm-row__label">Min</span>
+            {minMaxField("Min width", "minWidth", "W")}
+            {minMaxField("Min height", "minHeight", "H")}
+          </div>
+          <div className="wfm-row">
+            <span className="wfm-row__label">Max</span>
+            {minMaxField("Max width", "maxWidth", "W")}
+            {minMaxField("Max height", "maxHeight", "H")}
+          </div>
         </div>
       </div>
     </Section>
@@ -1929,21 +2030,67 @@ function StylesSection({ nodeId, style, project }: StylesSectionProps) {
       ) : null}
 
       {visible.includes("overflow") ? (
-        <div className="wfm-row">
-          <span className="wfm-row__label">Overflow</span>
-          <select
-            className="wfm-select wfm-row__grow"
-            value={style.overflow}
-            aria-label="Overflow"
-            onChange={(event) => write({ overflow: event.target.value as StyleProps["overflow"] })}
-          >
-            {OVERFLOW_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <>
+          <div className="wfm-row">
+            <span className="wfm-row__label">Overflow</span>
+            <select
+              className="wfm-select wfm-row__grow"
+              value={style.overflow}
+              aria-label="Overflow"
+              onChange={(event) =>
+                write({ overflow: event.target.value as StyleProps["overflow"] })
+              }
+            >
+              {OVERFLOW_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="wfm-row">
+            <span className="wfm-row__label">Overflow X</span>
+            <select
+              className="wfm-select wfm-row__grow"
+              value={style.overflowX ?? ""}
+              aria-label="Overflow X"
+              onChange={(event) =>
+                write({
+                  overflowX: event.target.value
+                    ? (event.target.value as StyleProps["overflow"])
+                    : null,
+                })
+              }
+            >
+              {OVERFLOW_AXIS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="wfm-row">
+            <span className="wfm-row__label">Overflow Y</span>
+            <select
+              className="wfm-select wfm-row__grow"
+              value={style.overflowY ?? ""}
+              aria-label="Overflow Y"
+              onChange={(event) =>
+                write({
+                  overflowY: event.target.value
+                    ? (event.target.value as StyleProps["overflow"])
+                    : null,
+                })
+              }
+            >
+              {OVERFLOW_AXIS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
       ) : null}
 
       {visible.includes("userSelect") ? (

@@ -167,7 +167,7 @@ export function resolveFillStyles(
 
 /* --------------------------------------------------------------------- size */
 
-function sizeToCss(size: SizeValue): string {
+function sizeToCss(size: SizeValue, axis: "width" | "height"): string {
   switch (size.mode) {
     case "fixed":
       return `${size.value ?? 0}px`;
@@ -177,6 +177,8 @@ function sizeToCss(size: SizeValue): string {
       return "fit-content";
     case "relative":
       return `${size.value ?? 0}%`;
+    case "viewport":
+      return `${size.value ?? 100}${axis === "height" ? "vh" : "vw"}`;
     default:
       return "auto";
   }
@@ -215,13 +217,45 @@ function flexChildStyles(props: BoxProps, context: StyleContext): CSSProperties 
 
 function positionStyles(position: PositionProps, context: StyleContext): CSSProperties {
   const style: CSSProperties = {};
-  if (context.parentLayout === "none") {
-    style.position = "absolute";
-    style.left = `${position.x}px`;
-    style.top = `${position.y}px`;
-  } else {
+
+  // A page or variant root always establishes the containing block.
+  if (context.parentLayout === "root") {
     style.position = "relative";
+    if (position.zIndex !== undefined) style.zIndex = position.zIndex;
+    return style;
   }
+
+  const mode = position.mode ?? (context.parentLayout === "none" ? "absolute" : "relative");
+
+  switch (mode) {
+    case "absolute":
+      style.position = "absolute";
+      style.left = `${position.x}px`;
+      style.top = `${position.y}px`;
+      break;
+    case "relative":
+      style.position = "relative";
+      // Explicit relative positioning offsets by x/y. The implicit default for
+      // stack/grid children keeps the old behavior without an offset.
+      if (position.mode === "relative") {
+        style.left = `${position.x}px`;
+        style.top = `${position.y}px`;
+      }
+      break;
+    case "fixed":
+      // The editor canvas uses page coordinates, so fixed behaves like absolute
+      // there; only published output keeps the element attached to the viewport.
+      style.position = context.renderMode === "publish" ? "fixed" : "absolute";
+      style.left = `${position.x}px`;
+      style.top = `${position.y}px`;
+      break;
+    case "sticky":
+      style.position = "sticky";
+      style.top = `${position.y}px`;
+      style.left = `${position.x}px`;
+      break;
+  }
+
   if (position.zIndex !== undefined) style.zIndex = position.zIndex;
   return style;
 }
@@ -257,14 +291,14 @@ export function resolveBoxStyles(
   }
 
   const size = props.size;
-  style.width = sizeToCss(size.width);
-  style.height = sizeToCss(size.height);
+  style.width = sizeToCss(size.width, "width");
+  style.height = sizeToCss(size.height, "height");
   Object.assign(style, flexChildStyles(props, context));
 
-  if (size.minWidth !== undefined) style.minWidth = `${size.minWidth}px`;
-  if (size.maxWidth !== undefined) style.maxWidth = `${size.maxWidth}px`;
-  if (size.minHeight !== undefined) style.minHeight = `${size.minHeight}px`;
-  if (size.maxHeight !== undefined) style.maxHeight = `${size.maxHeight}px`;
+  if (size.minWidth !== undefined && size.minWidth !== null) style.minWidth = `${size.minWidth}px`;
+  if (size.maxWidth !== undefined && size.maxWidth !== null) style.maxWidth = `${size.maxWidth}px`;
+  if (size.minHeight !== undefined && size.minHeight !== null) style.minHeight = `${size.minHeight}px`;
+  if (size.maxHeight !== undefined && size.maxHeight !== null) style.maxHeight = `${size.maxHeight}px`;
   if (size.aspectRatio !== null && size.aspectRatio !== undefined) {
     style.aspectRatio = String(size.aspectRatio);
   }
@@ -297,7 +331,18 @@ export function resolveBoxStyles(
   }
 
   if (props.style.opacity !== 1) style.opacity = props.style.opacity;
-  if (props.style.overflow !== "visible") style.overflow = props.style.overflow;
+  const { overflowX, overflowY } = props.style;
+  if (overflowX !== null && overflowX !== undefined) {
+    // Per-axis overrides replace the shorthand; the unset axis inherits the
+    // single overflow value.
+    style.overflowX = overflowX;
+    style.overflowY = overflowY ?? props.style.overflow;
+  } else if (overflowY !== null && overflowY !== undefined) {
+    style.overflowX = props.style.overflow;
+    style.overflowY = overflowY;
+  } else if (props.style.overflow !== "visible") {
+    style.overflow = props.style.overflow;
+  }
   if (props.style.blendMode && props.style.blendMode !== "normal") {
     style.mixBlendMode = props.style.blendMode as CSSProperties["mixBlendMode"];
   }

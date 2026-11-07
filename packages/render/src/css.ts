@@ -82,6 +82,7 @@ function childContext(props: BoxProps): StyleContext {
   return {
     parentLayout: props.layout.mode,
     parentDirection: props.layout.direction,
+    renderMode: "publish",
   };
 }
 
@@ -267,7 +268,7 @@ function collectEntries(
     }
   };
 
-  visit(page.root, { parentLayout: "root" }, 0);
+  visit(page.root, { parentLayout: "root", renderMode: "publish" }, 0);
   return [...entries.values()];
 }
 

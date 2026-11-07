@@ -220,8 +220,8 @@ export function ContextMenu() {
       run: run(() => setNodeOverflow(targetId, "hidden")),
     }),
     menuItem("Scroll", {
-      disabled: true,
-      note: "Scroll overflow is not in this build",
+      checked: current === "scroll",
+      run: run(() => setNodeOverflow(targetId, "scroll")),
     }),
   ];
 
@@ -269,12 +269,12 @@ export function ContextMenu() {
         disabled: !clipboardHasNodes(),
         run: run(pasteInPlace),
       }),
-    menuItem("Paste effects", {
-      disabled: true,
-      note: "The effects clipboard is not in this build",
-    }),
-    menuItem("Paste cursor", { disabled: true, note: "Cursors are not in this build" }),
-    menuItem("Paste guides", { disabled: true, note: "Guides are not in this build" }),
+      menuItem("Paste effects", {
+        disabled: true,
+        note: "The effects clipboard is not in this build",
+      }),
+      menuItem("Paste cursor", { disabled: true, note: "Cursors are not in this build" }),
+      menuItem("Paste guides", { disabled: true, note: "Guides are not in this build" }),
     ];
   };
 

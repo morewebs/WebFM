@@ -10,7 +10,9 @@ outside this project's scope.
 
 - **Done:** editor shell, pages, Frame/Stack/Text/Image, canvas select/move/
   resize, text editing, layers, grouping/wrapping, core Style panel with
-  solid/gradient/image fills, responsive breakpoints,
+  solid/gradient/image fills, positioning modes, overflow X/Y/scroll,
+  viewport sizing, min/max fields, rectangle/rounded/oval tools, responsive
+  breakpoints,
   components/instances/variants/property controls, Appear/Hover/Tap effects,
   alignment, context menus, preview, static publish.
 - **Partial:** Pages, Layers, Assets, Style, Components, Interactions, menus,
@@ -64,7 +66,7 @@ outside this project's scope.
 | Select/hover/move/resize/nudge | Done | |
 | Text editing (plain text) | Partial | No rich text spans, links, lists, paragraph spacing. |
 | Draw tools: frame, stack, grid, oval, text, image | Done | |
-| Shape tools: rectangle, rounded, polygon, star | Missing | Oval exists. |
+| Shape tools: rectangle, rounded, polygon, star | Partial | Rectangle (R), Rounded (U) and Oval (O) work; polygon/star/pen missing. |
 | Pen/path/vector editing | Missing | |
 | Rotation, scale tool, link tool, sample color | Missing | |
 | Smart guides/snapping/rulers/grid | Missing | |
@@ -72,7 +74,8 @@ outside this project's scope.
 | Multi-selection transform | Partial | Movement/resize per node; no group bounding transform. |
 | Component edit mode | Done | Basic bar, variant switching, back to page. |
 | Nested components | Missing | Page-only create/insert. |
-| Constraints/positioning modes | Missing | Relative/Absolute/Fixed/Sticky, auto-pin. |
+| Positioning modes | Done | Relative/Absolute/Fixed/Sticky; fixed is absolute in the editor and fixed when published. |
+| Constraints/auto-pin | Missing | |
 | Scroll containers | Missing | |
 | Page templates | Missing | |
 | Comments/cursor chat | Missing | |
@@ -82,8 +85,8 @@ outside this project's scope.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Size fixed/relative/fill/fit content | Done | Viewport sizing missing. |
-| Min/max sizing/constraints/aspect ratio | Partial | Model has min/max/aspect; no UI. |
+| Size fixed/relative/fill/fit content/viewport | Done | Viewport emits vw/vh; min/max fields added. |
+| Min/max sizing/constraints/aspect ratio | Partial | Min/max fields added with clear; auto-pin/constraints and aspect-ratio UI still missing. |
 | Layout none/stack/grid; direction/gap/padding/align/justify/wrap | Done | |
 | Grid columns/rows/gaps | Done | |
 | Fill solid | Done | |
@@ -95,7 +98,7 @@ outside this project's scope.
 | Shadow list | Done | Add/remove basic. |
 | Opacity/blend modes | Partial | Opacity UI; blend modes model/renderer only. |
 | Visual effects (blur, backdrop, etc.) | Missing | Effects section is currently interactions. |
-| Overflow clip/hidden/visible | Done | Overflow X/Y and Scroll missing. |
+| Overflow clip/hidden/visible/scroll + X/Y | Done | Per-axis selects and scroll added. |
 | Typography: family/size/weight/line height/spacing/color/align/italic/underline/case | Done | Static font list. |
 | Google Fonts/custom font picker | Missing | |
 | Text styles/paragraph spacing/rich text | Missing | |
@@ -153,10 +156,9 @@ outside this project's scope.
 
 1. ~~Grouping/wrapping/unwrapping~~ — done and verified.
 2. ~~Fill gradients and image fills in the Style panel~~ — done and verified.
-3. Positioning modes (Relative/Absolute/Fixed/Sticky) and overflow X/Y/Scroll
-   UI.
+3. ~~Positioning modes and overflow X/Y/Scroll, viewport sizing, min/max~~ — done and verified.
 4. Google Fonts/custom font picker and text styles.
-5. Shape tools: rectangle, rounded, polygon, star.
+5. Shape tools: rectangle and rounded done; polygon/star still missing.
 6. Color styles and text styles in Assets.
 7. Rulers/guides/smart guides and snapping.
 

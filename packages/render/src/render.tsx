@@ -50,10 +50,11 @@ function resolveImageSource(image: ImageContent, resolveAssetUrl: AssetUrlResolv
   return image.src.trim() ? image.src : null;
 }
 
-function childContext(props: BoxProps): StyleContext {
+function childContext(props: BoxProps, renderMode: RenderMode): StyleContext {
   return {
     parentLayout: props.layout.mode,
     parentDirection: props.layout.direction,
+    renderMode,
   };
 }
 
@@ -75,7 +76,14 @@ function renderFrame(
     >
       {node.children.map((child) => (
         <Fragment key={child.id}>
-          {renderNodeInternal(child, project, options, childContext(props), resolveAssetUrl, depth)}
+          {renderNodeInternal(
+            child,
+            project,
+            options,
+            childContext(props, options.mode),
+            resolveAssetUrl,
+            depth,
+          )}
         </Fragment>
       ))}
     </div>
@@ -197,7 +205,7 @@ function renderComponentInstance(
             child,
             project,
             options,
-            childContext(mergedProps),
+            childContext(mergedProps, options.mode),
             resolveAssetUrl,
             depth + 1,
           )}
@@ -253,7 +261,7 @@ export function renderNode(node: SceneNode, project: Project, options: RenderOpt
     node,
     project,
     options,
-    { parentLayout: "root" },
+    { parentLayout: "root", renderMode: options.mode },
     createAssetUrlResolver(project, options),
     0,
   );
@@ -277,7 +285,7 @@ export function PageView({ project, page, options }: PageViewProps): ReactElemen
         page.root,
         project,
         options,
-        { parentLayout: "root" },
+        { parentLayout: "root", renderMode: options.mode },
         resolveAssetUrl,
         0,
       )}

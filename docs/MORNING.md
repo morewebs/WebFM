@@ -22,9 +22,10 @@ Projects are plain JSON under `apps/server/.webfm-data/` (gitignored). Set
 the extracted **Inter Variable UI** font and 23 extracted chrome SVGs.
 Pages, Frame/Stack/Text/Image, infinite canvas with pan/zoom, insert, select,
 move, 8-handle resize, text editing, layers tree (rename, hide, lock, drag),
-grouping/wrapping/unwrapping,
+grouping/wrapping/unwrapping, rectangle/rounded/oval shape tools,
 Style panel (breakpoint position/size, layout, typography, solid/gradient/image
-fills, border/radius/shadow/opacity, overflow), align/distribute for free-layout siblings (buttons
+fills, border/radius/shadow/opacity, overflow X/Y/scroll), positioning
+modes, viewport sizing and min/max fields, align/distribute for free-layout siblings (buttons
 and Alt shortcuts), text-layer auto-rename, Framer's custom context menus
 (node/layer and empty canvas), responsive breakpoints with cascading overrides,
 undo/redo, preview, assets, publish and persistence.

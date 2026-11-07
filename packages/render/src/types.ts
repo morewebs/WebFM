@@ -21,6 +21,12 @@ export interface StyleContext {
   parentLayout: "none" | "stack" | "grid" | "root";
   /** Main-axis direction of the parent when it is a stack. */
   parentDirection?: LayoutAxis;
+  /**
+   * Environment the styles are resolved for. Fixed positioning renders as
+   * absolute in the editor so the canvas keeps page coordinates. Defaults to
+   * editor behavior when omitted.
+   */
+  renderMode?: RenderMode;
 }
 
 export interface StyleResolver {
