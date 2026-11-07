@@ -277,6 +277,27 @@ function isNodeLocked(root: SceneNode, nodeId: NodeId): boolean {
   return false;
 }
 
+/**
+ * The nearest hit element whose node exists in the active scene. A component
+ * instance renders its master's internal nodes with their master ids, so a
+ * click inside an instance resolves upward to the instance itself.
+ */
+function closestSceneNode(
+  root: SceneNode,
+  element: HTMLElement | null,
+): { element: HTMLElement; node: SceneNode } | null {
+  let current = element;
+  while (current) {
+    const id = current.dataset.nodeId;
+    if (id) {
+      const node = findNode(root, id);
+      if (node) return { element: current, node };
+    }
+    current = current.parentElement?.closest<HTMLElement>("[data-node-id]") ?? null;
+  }
+  return null;
+}
+
 /** The DOM rect of a node in viewport coordinates. */
 function measureNodeRect(
   _stage: HTMLElement,
@@ -1351,9 +1372,7 @@ export function Canvas() {
     const scene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
     if (!scene) return;
     const target = event.target as HTMLElement | null;
-    const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
-    const nodeId = nodeElement?.dataset.nodeId;
-    const node = nodeId ? findNode(scene.root, nodeId) : null;
+    const node = closestSceneNode(scene.root, target)?.node ?? null;
     state.setHovered(
       node && node.id !== scene.root.id && !isNodeLocked(scene.root, node.id) ? node.id : null,
     );
@@ -1372,9 +1391,7 @@ export function Canvas() {
     const currentScene = activeSceneOf(state.project, state.activePageId, state.editingComponent);
     if (!currentScene) return;
 
-    const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
-    const nodeId = nodeElement?.dataset.nodeId;
-    const node = nodeId ? findNode(currentScene.root, nodeId) : null;
+    const node = closestSceneNode(currentScene.root, target)?.node ?? null;
 
     if (node) {
       // Right-clicking a node that is already part of a selection keeps that
@@ -1491,7 +1508,8 @@ export function Canvas() {
       return;
     }
 
-    const nodeElement = target.closest<HTMLElement>("[data-node-id]");
+    const hit = closestSceneNode(currentScene.root, target);
+    const nodeElement = hit?.element ?? null;
     if (!nodeElement) {
       state.setHovered(null);
       if (event.button === 0) {
@@ -1517,8 +1535,8 @@ export function Canvas() {
       return;
     }
 
-    const nodeId = nodeElement.dataset.nodeId;
-    const node = nodeId ? findNode(currentScene.root, nodeId) : null;
+    const node = hit?.node ?? null;
+    const nodeId = node?.id;
     if (!nodeId || !node || isNodeLocked(currentScene.root, nodeId)) return;
 
     const additive = event.shiftKey || event.metaKey || event.ctrlKey;
@@ -1912,11 +1930,12 @@ export function Canvas() {
     const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
     if (!currentProject || !currentScene) return;
     const target = event.target as HTMLElement | null;
-    const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
-    const nodeId = nodeElement?.dataset.nodeId;
-    if (!nodeElement || !nodeId) return;
-    const node = findNode(currentScene.root, nodeId);
-    if (!node || isNodeLocked(currentScene.root, nodeId)) return;
+    const hit = closestSceneNode(currentScene.root, target);
+    if (!hit) return;
+    const nodeElement = hit.element;
+    const node = hit.node;
+    const nodeId = node.id;
+    if (isNodeLocked(currentScene.root, nodeId)) return;
     if (node.type === "componentInstance") {
       event.preventDefault();
       state.enterComponent(node.componentId, node.variantId ?? undefined, node.id);
