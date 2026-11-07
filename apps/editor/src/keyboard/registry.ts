@@ -34,7 +34,12 @@ export type ShortcutId =
   | "align-bottom"
   | "distribute-v"
   | "create-component"
-  | "back-to-page";
+  | "back-to-page"
+  | "group"
+  | "ungroup"
+  | "wrap-frame"
+  | "wrap-stack"
+  | "unwrap";
 
 export interface KeyboardEventLike {
   key: string;
@@ -75,6 +80,11 @@ export interface ShortcutActions {
   align?(mode: string): void;
   createComponent?(): void;
   backToPage?(): void;
+  group?(): void;
+  ungroup?(): void;
+  wrapFrame?(): void;
+  wrapStack?(): void;
+  unwrap?(): void;
 }
 
 export interface ShortcutBinding {
@@ -108,6 +118,11 @@ export const SHORTCUT_DEFINITIONS: ReadonlyArray<Pick<ShortcutBinding, "id" | "k
   { id: "zoom-100", keys: "Mod+0", label: "Zoom to 100%" },
   { id: "create-component", keys: "Mod+Alt+K", label: "Create Component" },
   { id: "back-to-page", keys: "Alt+Escape", label: "Back to page" },
+  { id: "group", keys: "Mod+G", label: "Group" },
+  { id: "ungroup", keys: "Mod+Shift+G", label: "Ungroup" },
+  { id: "wrap-frame", keys: "Shift+F", label: "Add Frame" },
+  { id: "wrap-stack", keys: "Shift+A", label: "Add Stack" },
+  { id: "unwrap", keys: "Mod+Delete", label: "Remove Frame" },
   { id: "align-left", keys: "Alt+A", label: "Align left" },
   { id: "align-center-h", keys: "Alt+H", label: "Align horizontally" },
   { id: "align-right", keys: "Alt+D", label: "Align right" },
@@ -209,6 +224,56 @@ export function createShortcutBindings(actions: ShortcutActions): ShortcutBindin
         event.shiftKey !== true &&
         event.key === "Escape",
       run: () => actions.backToPage?.(),
+    },
+    {
+      id: "group",
+      keys: "Mod+G",
+      label: "Group",
+      match: (event) =>
+        hasPrimary(event) && event.shiftKey !== true && event.altKey !== true && key(event) === "g",
+      run: () => actions.group?.(),
+    },
+    {
+      id: "ungroup",
+      keys: "Mod+Shift+G",
+      label: "Ungroup",
+      match: (event) =>
+        hasPrimary(event) && event.shiftKey === true && event.altKey !== true && key(event) === "g",
+      run: () => actions.ungroup?.(),
+    },
+    {
+      id: "wrap-frame",
+      keys: "Shift+F",
+      label: "Add Frame",
+      match: (event) =>
+        event.shiftKey === true &&
+        event.metaKey !== true &&
+        event.ctrlKey !== true &&
+        event.altKey !== true &&
+        key(event) === "f",
+      run: () => actions.wrapFrame?.(),
+    },
+    {
+      id: "wrap-stack",
+      keys: "Shift+A",
+      label: "Add Stack",
+      match: (event) =>
+        event.shiftKey === true &&
+        event.metaKey !== true &&
+        event.ctrlKey !== true &&
+        event.altKey !== true &&
+        key(event) === "a",
+      run: () => actions.wrapStack?.(),
+    },
+    {
+      id: "unwrap",
+      keys: "Mod+Delete",
+      label: "Remove Frame",
+      match: (event) =>
+        hasPrimary(event) &&
+        event.shiftKey !== true &&
+        (event.key === "Delete" || event.key === "Backspace"),
+      run: () => actions.unwrap?.(),
     },
     {
       id: "show-pages",

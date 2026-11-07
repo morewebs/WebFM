@@ -6,6 +6,7 @@ import { useProjectStore } from "./state/project-store";
 import { Canvas } from "./ui/canvas/Canvas";
 import { PublishDialog } from "./ui/dialogs/PublishDialog";
 import { ContextMenu } from "./ui/menus/ContextMenu";
+import { unwrapSelection, wrapSelection } from "./ui/menus/context-actions";
 import { Preview } from "./ui/preview/Preview";
 import { BottomBar } from "./ui/shell/BottomBar";
 import { LeftSidebar } from "./ui/shell/LeftSidebar";
@@ -87,6 +88,11 @@ export function App() {
           const state = useProjectStore.getState();
           if (state.editingComponent) state.exitComponent();
         },
+        group: () => wrapSelection("frame"),
+        ungroup: () => unwrapSelection(),
+        wrapFrame: () => wrapSelection("frame"),
+        wrapStack: () => wrapSelection("stack"),
+        unwrap: () => unwrapSelection(),
         align: (mode) =>
           window.dispatchEvent(new CustomEvent("wfm:align", { detail: mode })),
       }),

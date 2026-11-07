@@ -41,7 +41,7 @@ describe("shortcut registry", () => {
     expect(bindings.map((binding) => binding.id).sort()).toEqual(
       SHORTCUT_DEFINITIONS.map((definition) => definition.id).sort(),
     );
-    expect(SHORTCUT_DEFINITIONS).toHaveLength(28);
+    expect(SHORTCUT_DEFINITIONS).toHaveLength(33);
   });
 
   it("maps the alignment shortcuts", () => {
@@ -125,6 +125,57 @@ describe("shortcut registry", () => {
     const clearBinding = bindingFor(bindings, "clear-selection");
     expect(clearBinding.match(keyEvent({ key: "Escape" }))).toBe(true);
     expect(clearBinding.match(keyEvent({ key: "Escape", ctrlKey: true }))).toBe(false);
+  });
+
+  it("maps the grouping, wrapping and unwrapping shortcuts", () => {
+    const bindings = createShortcutBindings(actions());
+    const group = bindingFor(bindings, "group");
+    const ungroup = bindingFor(bindings, "ungroup");
+    const wrapFrame = bindingFor(bindings, "wrap-frame");
+    const wrapStack = bindingFor(bindings, "wrap-stack");
+    const unwrap = bindingFor(bindings, "unwrap");
+
+    expect(group.match(keyEvent({ key: "g", ctrlKey: true }))).toBe(true);
+    expect(group.match(keyEvent({ key: "G", metaKey: true }))).toBe(true);
+    expect(group.match(keyEvent({ key: "g", ctrlKey: true, shiftKey: true }))).toBe(false);
+    expect(group.match(keyEvent({ key: "g" }))).toBe(false);
+
+    expect(ungroup.match(keyEvent({ key: "g", ctrlKey: true, shiftKey: true }))).toBe(true);
+    expect(ungroup.match(keyEvent({ key: "g", ctrlKey: true }))).toBe(false);
+
+    expect(wrapFrame.match(keyEvent({ key: "f", shiftKey: true }))).toBe(true);
+    expect(wrapFrame.match(keyEvent({ key: "f" }))).toBe(false);
+    expect(wrapFrame.match(keyEvent({ key: "f", shiftKey: true, ctrlKey: true }))).toBe(false);
+
+    expect(wrapStack.match(keyEvent({ key: "a", shiftKey: true }))).toBe(true);
+    expect(wrapStack.match(keyEvent({ key: "a" }))).toBe(false);
+
+    expect(unwrap.match(keyEvent({ key: "Delete", ctrlKey: true }))).toBe(true);
+    expect(unwrap.match(keyEvent({ key: "Backspace", metaKey: true }))).toBe(true);
+    expect(unwrap.match(keyEvent({ key: "Delete" }))).toBe(false);
+    expect(unwrap.match(keyEvent({ key: "Delete", ctrlKey: true, shiftKey: true }))).toBe(false);
+  });
+
+  it("runs the grouping, wrapping and unwrapping actions", () => {
+    const spies = {
+      ...actions(),
+      group: vi.fn(),
+      ungroup: vi.fn(),
+      wrapFrame: vi.fn(),
+      wrapStack: vi.fn(),
+      unwrap: vi.fn(),
+    };
+    const bindings = createShortcutBindings(spies);
+    bindingFor(bindings, "group").run();
+    bindingFor(bindings, "ungroup").run();
+    bindingFor(bindings, "wrap-frame").run();
+    bindingFor(bindings, "wrap-stack").run();
+    bindingFor(bindings, "unwrap").run();
+    expect(spies.group).toHaveBeenCalledTimes(1);
+    expect(spies.ungroup).toHaveBeenCalledTimes(1);
+    expect(spies.wrapFrame).toHaveBeenCalledTimes(1);
+    expect(spies.wrapStack).toHaveBeenCalledTimes(1);
+    expect(spies.unwrap).toHaveBeenCalledTimes(1);
   });
 
   it("runs the action for a matching event", () => {

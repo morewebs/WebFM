@@ -9,6 +9,7 @@
  */
 
 import {
+  type Asset,
   addComponentProperty,
   addInteraction,
   type Border,
@@ -25,6 +26,8 @@ import {
   type Fill,
   findComponentInstances,
   findNode,
+  type GradientStop,
+  type ImageFit,
   type ImageNode,
   type ImageProps,
   type Interaction,
@@ -165,16 +168,50 @@ function colorInputValue(value: string): string {
   return normalizeHex(value) ?? "#000000";
 }
 
-function fillLabel(fill: Fill): string {
+const FILL_TYPE_OPTIONS = [
+  { value: "solid", label: "Solid" },
+  { value: "linear-gradient", label: "Linear" },
+  { value: "radial-gradient", label: "Radial" },
+  { value: "image", label: "Image" },
+] as const;
+
+function defaultFillForType(type: Fill["type"]): Fill {
+  switch (type) {
+    case "solid":
+      return { type: "solid", color: "#ffffff", opacity: 1 };
+    case "linear-gradient":
+      return {
+        type: "linear-gradient",
+        angle: 180,
+        stops: [
+          { color: "#ffffff", position: 0 },
+          { color: "#000000", position: 100 },
+        ],
+      };
+    case "radial-gradient":
+      return {
+        type: "radial-gradient",
+        stops: [
+          { color: "#ffffff", position: 0 },
+          { color: "#000000", position: 100 },
+        ],
+      };
+    case "image":
+      return { type: "image", assetId: null, src: "", fit: "fill", positionX: 50, positionY: 50 };
+  }
+}
+
+function fillSummaryText(fill: Fill, assets: Asset[]): string {
   switch (fill.type) {
+    case "solid":
+      return `#${displayHex(fill.color)}`;
     case "linear-gradient":
       return "Linear gradient";
     case "radial-gradient":
       return "Radial gradient";
     case "image":
-      return "Image";
-    default:
-      return "Solid";
+      if (!fill.assetId) return "Image";
+      return assets.find((asset) => asset.id === fill.assetId)?.name ?? "Missing asset";
   }
 }
 
@@ -558,72 +595,375 @@ interface FillRowProps {
   onClear: () => void;
   resolveAssetUrl?: (assetId: string) => string | null;
   ariaLabel?: string;
+  assets?: Asset[];
 }
 
-function FillRow({ fill, onSet, onClear, resolveAssetUrl, ariaLabel = "Fill" }: FillRowProps) {
-  const solid = fill?.type === "solid" ? fill : null;
+interface GradientStopsEditorProps {
+  stops: GradientStop[];
+  ariaLabel: string;
+  onChange: (stops: GradientStop[]) => void;
+}
 
-  if (solid) {
-    return (
-      <div className="wfm-row">
-        <span className="wfm-row__label">Fill</span>
-        <span className="wfm-style-value">
+function GradientStopsEditor({ stops, ariaLabel, onChange }: GradientStopsEditorProps) {
+  const update = (index: number, patch: Partial<GradientStop>) => {
+    onChange(stops.map((stop, position) => (position === index ? { ...stop, ...patch } : stop)));
+  };
+
+  const remove = (index: number) => {
+    if (stops.length <= 2) return;
+    onChange(stops.filter((_stop, position) => position !== index));
+  };
+
+  const add = () => {
+    const last = stops[stops.length - 1];
+    if (!last) return;
+    const previous = stops[stops.length - 2];
+    // Copy the last stop at the midpoint toward 100%. When the last stop is
+    // already there, use the midpoint of the last pair instead.
+    let position = Math.round((last.position + 100) / 2);
+    if (position <= last.position) {
+      position = previous
+        ? Math.round((previous.position + last.position) / 2)
+        : Math.max(0, last.position - 10);
+    }
+    onChange([...stops, { color: last.color, position }].sort((a, b) => a.position - b.position));
+  };
+
+  return (
+    <div className="wfm-pp__fill-stops">
+      <span className="wfm-pp__fill-label">Stops</span>
+      {stops.map((stop, index) => (
+        <div key={`${stop.color}-${stop.position}`} className="wfm-pp__fill-stop">
           <input
             type="color"
             className="wfm-pp__swatch"
-            value={colorInputValue(solid.color)}
-            style={{ opacity: solid.opacity }}
-            aria-label={`${ariaLabel} color`}
-            onChange={(event) => onSet({ ...solid, color: event.target.value })}
+            value={colorInputValue(stop.color)}
+            aria-label={`${ariaLabel} stop ${index + 1} color`}
+            onChange={(event) => update(index, { color: event.target.value })}
           />
           <HexField
-            color={solid.color}
-            onCommit={(color) => onSet({ ...solid, color })}
-            ariaLabel={`${ariaLabel} hex`}
+            color={stop.color}
+            onCommit={(color) => update(index, { color })}
+            ariaLabel={`${ariaLabel} stop ${index + 1} hex`}
           />
+          <NumberField
+            value={stop.position}
+            min={0}
+            max={100}
+            onCommit={(position) => update(index, { position })}
+            ariaLabel={`${ariaLabel} stop ${index + 1} position`}
+            className="wfm-pp__fill-position"
+          />
+          <span className="wfm-pp__unit">%</span>
           <button
             type="button"
             className="wfm-remove"
-            title="Remove fill"
-            aria-label="Remove fill"
-            onClick={onClear}
+            title={
+              stops.length <= 2 ? "A gradient needs at least two stops" : "Remove gradient stop"
+            }
+            aria-label={`Remove ${ariaLabel.toLowerCase()} stop ${index + 1}`}
+            disabled={stops.length <= 2}
+            onClick={() => remove(index)}
           >
             <Icon name="close" size={12} />
           </button>
-        </span>
-      </div>
-    );
-  }
+        </div>
+      ))}
+      <button type="button" className="wfm-pp__add-button" onClick={add}>
+        <Icon name="plus" size={12} />
+        Add stop
+      </button>
+    </div>
+  );
+}
 
-  if (fill) {
+function FillRow({
+  fill,
+  onSet,
+  onClear,
+  resolveAssetUrl,
+  ariaLabel = "Fill",
+  assets = [],
+}: FillRowProps) {
+  const uploadAsset = useProjectStore((state) => state.uploadAsset);
+  const [expanded, setExpanded] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addSolid = () => {
+    onSet(defaultFillForType("solid"));
+    setExpanded(true);
+  };
+
+  const clear = () => {
+    onClear();
+    setExpanded(false);
+  };
+
+  const changeType = (type: Fill["type"]) => {
+    if (fill?.type === type) return;
+    onSet(defaultFillForType(type));
+    setExpanded(true);
+  };
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const uploaded = await uploadAsset(file);
+      if (uploaded && fill?.type === "image") {
+        onSet({ ...fill, assetId: uploaded.id, src: uploaded.url });
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  if (!fill) {
     return (
       <div className="wfm-row">
         <span className="wfm-row__label">Fill</span>
-        <span className="wfm-style-value">
-          <span className="wfm-swatch" style={resolveFillStyles(fill, resolveAssetUrl)} />
-          <span className="wfm-pp__value-text">{fillLabel(fill)}</span>
-        </span>
+        <button
+          type="button"
+          className="wfm-style-value wfm-pp__fill-summary"
+          title="Add fill"
+          aria-label="Add fill"
+          onClick={addSolid}
+        >
+          <span className="wfm-swatch wfm-pp__swatch-empty" />
+          <span className="wfm-pp__value-text">Add fill</span>
+          <Icon name="plus" size={12} />
+        </button>
       </div>
     );
   }
 
+  const imageAsset =
+    fill.type === "image" && fill.assetId
+      ? assets.find((asset) => asset.id === fill.assetId)
+      : undefined;
+  const imageAssets = assets.filter((asset) => asset.mimeType.startsWith("image/"));
+
   return (
-    <div className="wfm-row">
-      <span className="wfm-row__label">Fill</span>
-      <span className="wfm-style-value">
-        <span className="wfm-swatch wfm-pp__swatch-empty" />
-        <span className="wfm-pp__value-text">None</span>
+    <>
+      <div className="wfm-row">
+        <span className="wfm-row__label">Fill</span>
+        <button
+          type="button"
+          className="wfm-style-value wfm-pp__fill-summary"
+          title="Edit fill"
+          aria-expanded={expanded}
+          aria-label={`${ariaLabel}: ${fillSummaryText(fill, assets)}`}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="wfm-swatch" style={resolveFillStyles(fill, resolveAssetUrl)} />
+          <span className="wfm-pp__value-text">{fillSummaryText(fill, assets)}</span>
+          <Icon
+            name="chevron-right"
+            size={10}
+            className={`wfm-pp__fill-chevron${expanded ? " is-open" : ""}`}
+          />
+        </button>
         <button
           type="button"
           className="wfm-remove"
-          title="Add fill"
-          aria-label="Add fill"
-          onClick={() => onSet({ type: "solid", color: "#ffffff", opacity: 1 })}
+          title="Remove fill"
+          aria-label="Remove fill"
+          onClick={clear}
         >
-          <Icon name="plus" size={12} />
+          <Icon name="close" size={12} />
         </button>
-      </span>
-    </div>
+      </div>
+
+      {expanded ? (
+        <div className="wfm-pp__fill-editor">
+          <div className="wfm-pp__fill-control">
+            <span className="wfm-pp__fill-label">Type</span>
+            <select
+              className="wfm-select wfm-row__grow"
+              value={fill.type}
+              aria-label={`${ariaLabel} type`}
+              onChange={(event) => changeType(event.target.value as Fill["type"])}
+            >
+              {FILL_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {fill.type === "solid" ? (
+            <>
+              <div className="wfm-pp__fill-control">
+                <span className="wfm-pp__fill-label">Color</span>
+                <span className="wfm-style-value">
+                  <input
+                    type="color"
+                    className="wfm-pp__swatch"
+                    value={colorInputValue(fill.color)}
+                    style={{ opacity: fill.opacity }}
+                    aria-label={`${ariaLabel} color`}
+                    onChange={(event) => onSet({ ...fill, color: event.target.value })}
+                  />
+                  <HexField
+                    color={fill.color}
+                    onCommit={(color) => onSet({ ...fill, color })}
+                    ariaLabel={`${ariaLabel} hex`}
+                  />
+                </span>
+              </div>
+              <div className="wfm-pp__fill-control">
+                <span className="wfm-pp__fill-label">Opacity</span>
+                <input
+                  type="range"
+                  className="wfm-pp__slider"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={fill.opacity}
+                  aria-label={`${ariaLabel} opacity`}
+                  onChange={(event) => onSet({ ...fill, opacity: Number(event.target.value) })}
+                />
+                <NumberField
+                  value={fill.opacity}
+                  min={0}
+                  max={1}
+                  onCommit={(opacity) => onSet({ ...fill, opacity })}
+                  ariaLabel={`${ariaLabel} opacity value`}
+                  className="wfm-pp__fill-number"
+                />
+              </div>
+            </>
+          ) : null}
+
+          {fill.type === "linear-gradient" ? (
+            <>
+              <div className="wfm-pp__fill-control">
+                <span className="wfm-pp__fill-label">Angle</span>
+                <NumberField
+                  value={fill.angle}
+                  onCommit={(angle) => onSet({ ...fill, angle })}
+                  ariaLabel={`${ariaLabel} angle`}
+                  className="wfm-pp__fill-number"
+                />
+                <span className="wfm-pp__unit">deg</span>
+              </div>
+              <GradientStopsEditor
+                stops={fill.stops}
+                ariaLabel={ariaLabel}
+                onChange={(stops) => onSet({ ...fill, stops })}
+              />
+            </>
+          ) : null}
+
+          {fill.type === "radial-gradient" ? (
+            <GradientStopsEditor
+              stops={fill.stops}
+              ariaLabel={ariaLabel}
+              onChange={(stops) => onSet({ ...fill, stops })}
+            />
+          ) : null}
+
+          {fill.type === "image" ? (
+            <>
+              <div
+                className="wfm-pp__fill-preview"
+                role="img"
+                aria-label={`${ariaLabel} preview`}
+                style={resolveFillStyles(fill, resolveAssetUrl)}
+              />
+              <div className="wfm-pp__fill-control">
+                <span className="wfm-pp__fill-label">Asset</span>
+                <select
+                  className="wfm-select wfm-row__grow"
+                  value={fill.assetId ?? ""}
+                  aria-label={`${ariaLabel} asset`}
+                  onChange={(event) => {
+                    const assetId = event.target.value || null;
+                    const asset = assetId
+                      ? imageAssets.find((candidate) => candidate.id === assetId)
+                      : undefined;
+                    onSet({
+                      ...fill,
+                      assetId,
+                      src: asset?.url ?? (assetId ? fill.src : ""),
+                    });
+                  }}
+                >
+                  <option value="">Select image…</option>
+                  {fill.assetId && !imageAsset ? (
+                    <option value={fill.assetId}>Missing asset</option>
+                  ) : null}
+                  {imageAssets.map((asset) => (
+                    <option key={asset.id} value={asset.id}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="wfm-pp__fill-upload"
+                  disabled={uploading}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploading ? "Uploading…" : "Upload"}
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  aria-label={`Upload ${ariaLabel.toLowerCase()} image`}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void upload(file);
+                  }}
+                />
+              </div>
+              <div className="wfm-pp__fill-control">
+                <span className="wfm-pp__fill-label">Fit</span>
+                <select
+                  className="wfm-select wfm-row__grow"
+                  value={fill.fit}
+                  aria-label={`${ariaLabel} fit`}
+                  onChange={(event) => onSet({ ...fill, fit: event.target.value as ImageFit })}
+                >
+                  {IMAGE_FIT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="wfm-pp__fill-control">
+                <span className="wfm-pp__fill-label">Position</span>
+                <div className="wfm-pp__fill-position-pair">
+                  <NumberField
+                    value={fill.positionX}
+                    min={0}
+                    max={100}
+                    onCommit={(positionX) => onSet({ ...fill, positionX })}
+                    ariaLabel={`${ariaLabel} position X`}
+                    className="wfm-pp__fill-position"
+                  />
+                  <span className="wfm-pp__unit">%</span>
+                  <NumberField
+                    value={fill.positionY}
+                    min={0}
+                    max={100}
+                    onCommit={(positionY) => onSet({ ...fill, positionY })}
+                    ariaLabel={`${ariaLabel} position Y`}
+                    className="wfm-pp__fill-position"
+                  />
+                  <span className="wfm-pp__unit">%</span>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1555,6 +1895,7 @@ function StylesSection({ nodeId, style, project }: StylesSectionProps) {
           onSet={(fill) => write({ fill })}
           onClear={() => write({ fill: null })}
           resolveAssetUrl={resolveAssetUrl}
+          assets={project.assets}
         />
       ) : null}
 

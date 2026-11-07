@@ -52,6 +52,8 @@ import {
   sortLayersAlphabetically,
   toggleNodeLock,
   toggleNodeVisibility,
+  unwrapSelection,
+  wrapSelection,
   zoomTo100,
   zoomToFit,
 } from "./context-actions";
@@ -450,18 +452,33 @@ export function ContextMenu() {
     entries.push(
       menuItem("Add frame", {
         shortcut: "Shift+F",
-        disabled: true,
-        note: "Wrapping in a frame is next",
+        disabled: isRoot,
+        note: isRoot ? "The page root cannot be wrapped" : undefined,
+        run: run(() => wrapSelection("frame")),
       }),
       menuItem("Add stack", {
         shortcut: "Shift+A",
-        disabled: true,
-        note: "Wrapping in a stack is next",
+        disabled: isRoot,
+        note: isRoot ? "The page root cannot be wrapped" : undefined,
+        run: run(() => wrapSelection("stack")),
       }),
       menuItem("Remove frame", {
         shortcut: "Ctrl+Del",
-        disabled: true,
-        note: "Unwrapping is next",
+        disabled: isRoot,
+        note: isRoot ? "The page root has no wrapper" : undefined,
+        run: run(() => unwrapSelection(target.id)),
+      }),
+      menuItem("Group", {
+        shortcut: "Ctrl+G",
+        disabled: isRoot,
+        note: isRoot ? "The page root cannot be grouped" : undefined,
+        run: run(() => wrapSelection("frame")),
+      }),
+      menuItem("Ungroup", {
+        shortcut: "Ctrl+Shift+G",
+        disabled: isRoot,
+        note: isRoot ? "The page root has no wrapper" : undefined,
+        run: run(() => unwrapSelection(target.id)),
       }),
       menuItem("Set as default fill", {
         disabled: true,

@@ -1,4 +1,4 @@
-import { canRedo, canUndo, createFrame, findNode, resolveNodeProps } from "@webfm/model";
+import { canRedo, canUndo, findNode, findParent, resolveNodeProps } from "@webfm/model";
 import {
   type CSSProperties,
   Fragment,
@@ -10,6 +10,7 @@ import {
 import { activeSceneOf, useProjectStore } from "../../state/project-store";
 import { Icon, type IconName } from "../icons";
 import { useUIStore } from "../ui-store";
+import { unwrapSelection, wrapSelection } from "./context-actions";
 import "./MainMenu.css";
 
 interface MainMenuProps {
@@ -64,7 +65,6 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
   const redo = useProjectStore((state) => state.redo);
   const duplicateSelection = useProjectStore((state) => state.duplicateSelection);
   const deleteSelection = useProjectStore((state) => state.deleteSelection);
-  const insertNode = useProjectStore((state) => state.insertNode);
   const updateBox = useProjectStore((state) => state.updateBox);
   const updateText = useProjectStore((state) => state.updateText);
   const editingComponent = useProjectStore((state) => state.editingComponent);
@@ -124,28 +124,14 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
   const redoAvailable = history ? canRedo(history) : false;
   const hasSelection = selection.length > 0;
 
-  const addFrame = (): void => {
-    insertNode(
-      createFrame({
-        name: "Frame",
-        props: {
-          size: { width: { mode: "fixed", value: 400 }, height: { mode: "fixed", value: 300 } },
-        },
-      }),
-    );
-  };
-
-  const addStack = (): void => {
-    insertNode(
-      createFrame({
-        name: "Stack",
-        props: {
-          layout: { mode: "stack" },
-          size: { width: { mode: "fixed", value: 400 }, height: { mode: "hug" } },
-        },
-      }),
-    );
-  };
+  const canWrapSelection = scene !== null && selection.some((id) => id !== scene.root.id);
+  const selectedParent =
+    scene && singleSelectedNode ? findParent(scene.root, singleSelectedNode.id) : null;
+  const canUnwrapSelection =
+    singleSelectedNode !== null &&
+    !selectedIsSceneRoot &&
+    (singleSelectedNode.type === "frame" ||
+      (selectedParent !== null && selectedParent.id !== scene?.root.id));
 
   const fitContent = (): void => {
     if (!selectedId) return;
@@ -372,23 +358,46 @@ export function MainMenu({ style, onClose }: MainMenuProps): ReactElement {
             {
               id: "add-frame",
               label: "Add Frame",
-              shortcut: "Ctrl+Enter",
-              action: addFrame,
-              disabled: !project,
-              reason: "Open a project first",
+              shortcut: "Shift+F",
+              action: () => wrapSelection("frame"),
+              disabled: !canWrapSelection,
+              reason: "Select a layer first",
             },
             {
               id: "add-stack",
               label: "Add Stack",
-              shortcut: "Ctrl+Alt+Enter",
-              action: addStack,
-              disabled: !project,
-              reason: "Open a project first",
+              shortcut: "Shift+A",
+              action: () => wrapSelection("stack"),
+              disabled: !canWrapSelection,
+              reason: "Select a layer first",
+            },
+            {
+              id: "group",
+              label: "Group",
+              shortcut: "Ctrl+G",
+              action: () => wrapSelection("frame"),
+              disabled: !canWrapSelection,
+              reason: "Select a layer first",
+            },
+            {
+              id: "ungroup",
+              label: "Ungroup",
+              shortcut: "Ctrl+Shift+G",
+              action: () => unwrapSelection(),
+              disabled: !canUnwrapSelection,
+              reason: "Select a frame or a layer inside one",
+            },
+            {
+              id: "remove-wrapper",
+              label: "Remove Wrapper",
+              shortcut: "Ctrl+Del",
+              action: () => unwrapSelection(),
+              disabled: !canUnwrapSelection,
+              reason: "Select a frame or a layer inside one",
             },
             {
               id: "fit-content",
               label: "Fit content",
-              shortcut: "Shift+A",
               action: fitContent,
               disabled: !hasSelection,
               reason: "Select a layer first",

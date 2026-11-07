@@ -29,8 +29,11 @@ unless the live editor shows otherwise.
 | Hide | `Cmd+;` | `Ctrl+;` |
 | Add Frame | `Cmd+Enter` | `Ctrl+Enter` |
 | Add Stack | `Cmd+Alt+Enter` | `Ctrl+Alt+Enter` |
+| Group / Ungroup | `Cmd+G` / `Cmd+Shift+G` | `Ctrl+G` / `Ctrl+Shift+G` |
+| Wrap in frame / stack | `Shift+F` / `Shift+A` | same |
+| Remove wrapper | `Cmd+Delete` | `Ctrl+Delete` |
 | Remove wrapper | `Cmd+Backspace` | `Ctrl+Del` |
-| Fit content | `Shift+A` | `Shift+A` |
+| Fit content | `Shift+A` (conflicts with Add stack in Framer’s live menu; Add stack wins) | same |
 | Select all | `Cmd+A` | `Ctrl+A` |
 | Select all siblings | `Cmd+Shift+A` | `Ctrl+Shift+A` |
 | Select parent | `Escape` | `Escape` |

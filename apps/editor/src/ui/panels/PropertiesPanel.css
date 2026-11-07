@@ -148,6 +148,119 @@
   box-shadow: inset 0 0 0 1px var(--wfm-accent);
 }
 
+/* ------------------------------------------------------------ fill editor */
+
+.wfm-pp__fill-summary {
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wfm-pp__fill-summary:hover {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-pp__fill-chevron {
+  flex: none;
+  color: var(--wfm-text-faint);
+  transition: transform 120ms ease;
+}
+
+.wfm-pp__fill-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.wfm-pp__fill-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--wfm-border-soft);
+  border-radius: 6px;
+  background: var(--wfm-bg);
+}
+
+.wfm-pp__fill-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--wfm-control-h);
+}
+
+.wfm-pp__fill-label {
+  flex: 0 0 52px;
+  color: var(--wfm-text-dim);
+  font-size: 12px;
+}
+
+.wfm-pp__fill-number {
+  flex: 0 0 46px;
+  width: 46px;
+  text-align: right;
+}
+
+.wfm-pp__fill-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wfm-pp__fill-stops > .wfm-pp__fill-label {
+  flex: none;
+}
+
+.wfm-pp__fill-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--wfm-control-h);
+}
+
+.wfm-pp__fill-stop .wfm-pp__hex {
+  height: var(--wfm-control-h);
+}
+
+.wfm-pp__fill-position {
+  flex: 0 0 40px;
+  width: 40px;
+  text-align: right;
+}
+
+.wfm-pp__fill-position-pair {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wfm-pp__fill-preview {
+  height: 56px;
+  border: 1px solid var(--wfm-border-soft);
+  border-radius: 4px;
+  background-color: var(--wfm-surface);
+  background-repeat: no-repeat;
+}
+
+.wfm-pp__fill-upload {
+  flex: none;
+  height: var(--wfm-control-h);
+  padding: 0 8px;
+  border-radius: var(--wfm-radius);
+  background: var(--wfm-surface);
+  color: var(--wfm-text);
+  font-size: 12px;
+}
+
+.wfm-pp__fill-upload:hover:not(:disabled) {
+  background: var(--wfm-surface-hover);
+}
+
+.wfm-pp__fill-upload:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ------------------------------------------------------- opacity and switches */
 
 .wfm-pp__slider {

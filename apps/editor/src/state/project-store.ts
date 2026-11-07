@@ -51,6 +51,8 @@ import {
   updateBoxProps,
   updateImageProps,
   updateTextProps,
+  unwrapNode,
+  wrapNodes,
 } from "@webfm/model";
 import type { Asset } from "@webfm/model";
 import type { Draft } from "immer";
@@ -140,6 +142,15 @@ export interface ProjectStoreState {
   insertNode(node: SceneNode, options?: InsertNodeOptions): NodeId | null;
   deleteSelection(): void;
   duplicateSelection(): NodeId[];
+  wrapSelection(
+    kind: "frame" | "stack",
+    bounds: { x: number; y: number; width: number; height: number },
+    positions: Record<NodeId, { x: number; y: number }>,
+  ): NodeId | null;
+  unwrapSelection(
+    nodeId: NodeId,
+    childPositions?: Record<NodeId, { x: number; y: number }>,
+  ): NodeId[];
   enterComponent(componentId: ComponentId, variantId?: VariantId, instanceId?: NodeId): void;
   exitComponent(): void;
   createComponentFromSelection(
@@ -741,6 +752,36 @@ export function createProjectStore(deps: ProjectStoreDeps = {}): ProjectStore {
         });
         set({ selection: newIds });
         return newIds;
+      },
+
+      wrapSelection(kind, bounds, positions) {
+        const state = get();
+        const scene = currentScene();
+        if (!scene) return null;
+        const nodeIds = topLevelSelection(scene.root, state.selection);
+        if (nodeIds.length === 0) return null;
+
+        const frameId = applyRecipeWithResult(
+          kind === "stack" ? "Wrap in stack" : "Wrap in frame",
+          (draft) =>
+            wrapNodes(draft, withTarget(scene.target, { nodeIds, kind, bounds, positions })),
+        );
+        if (frameId === null) return null;
+        set({ selection: [frameId] });
+        return frameId;
+      },
+
+      unwrapSelection(nodeId, childPositions) {
+        const scene = currentScene();
+        if (!scene) return [];
+        const parent = findParent(scene.root, nodeId);
+
+        const moved = applyRecipeWithResult("Remove frame", (draft) =>
+          unwrapNode(draft, withTarget(scene.target, { nodeId, childPositions })),
+        );
+        if (moved === null) return [];
+        set({ selection: moved.length > 0 ? moved : parent ? [parent.id] : [] });
+        return moved;
       },
 
       enterComponent(componentId, variantId, instanceId) {
