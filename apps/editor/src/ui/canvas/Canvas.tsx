@@ -812,6 +812,7 @@ export function Canvas() {
   const spaceRef = useRef(false);
   const editorClosedRef = useRef(false);
   const editorFocusedRef = useRef(false);
+  const editorOpenedAtRef = useRef(0);
 
   const [viewportWidth, setViewportWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -1558,6 +1559,10 @@ export function Canvas() {
     }
 
     if (isDrawTool(currentTool)) {
+      // Preventing the pointerdown default suppresses the compatibility
+      // mousedown, so the browser does not move focus off the text editor
+      // that this gesture is about to open.
+      event.preventDefault();
       const stageRect = stage.getBoundingClientRect();
       const viewportRect = viewport.getBoundingClientRect();
       sessionRef.current = {
@@ -1989,6 +1994,7 @@ export function Canvas() {
     }
     editorClosedRef.current = false;
     editorFocusedRef.current = false;
+    editorOpenedAtRef.current = Date.now();
     setEditing({
       nodeId,
       value: props.text.content,
@@ -2466,7 +2472,16 @@ export function Canvas() {
           onChange={(event) =>
             setEditing((current) => (current ? { ...current, value: event.target.value } : current))
           }
-          onBlur={() => closeEditor(true)}
+          onBlur={() => {
+            // A trusted mouse click performs a default focus change after
+            // pointerup. If it lands right after the editor opens, refocus
+            // instead of discarding the fresh, still-empty layer.
+            if (Date.now() - editorOpenedAtRef.current < 120) {
+              textareaRef.current?.focus();
+              return;
+            }
+            closeEditor(true);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();

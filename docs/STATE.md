@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-08 12:10
+**Updated:** 2026-11-08 13:20
 
 ## Current milestone
 
@@ -170,6 +170,18 @@ CMS.
   row outlined that layer on the canvas; ArrowUp stepped Position X 140→141;
   Ctrl+C then Ctrl+V added one layer with a fresh id and selected it, and
   Ctrl+A selected all nine top-level layers.
+- Editing focus (2026-11-08): a trusted mouse click performs a default focus
+  change after pointerup, which could blur the just-opened text editor, run
+  closeEditor(true) and delete the empty layer — invisible to synthetic checks
+  because a scripted click does not move focus. Two guards now protect that
+  path: draw-tool pointerdown calls preventDefault (suppressing the
+  compatibility mousedown/focus change), and a blur arriving within 120 ms of
+  opening refocuses the textarea. Verified with real CDP key input: Text tool
+  -> canvas click -> typed "Hello" with real keystrokes -> Escape committed a
+  38.56 x 19.2 layer; an immediate focusout after mount kept the editor open
+  and focused. The trusted mouse click itself cannot be dispatched in this
+  environment (window unfocused), so the exact trigger remains guarded rather
+  than reproduced.
 - Selection chrome measured from Framer 3.0: 1px accent edges drawn inside the
   layer bounds, one 9px round handle centred on the bottom-right corner for a
   single selection (a single bounding box with four corner handles for a
