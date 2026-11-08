@@ -298,6 +298,19 @@ function isNodeLocked(root: SceneNode, nodeId: NodeId): boolean {
 }
 
 /**
+ * The word range around a caret offset, used when a double-click opens the
+ * editor: Framer selects the word under the pointer, like a native text field.
+ */
+export function wordRangeAt(text: string, offset: number): { start: number; end: number } {
+  const isWord = (character: string): boolean => /[\p{L}\p{N}_]/u.test(character);
+  let start = Math.min(Math.max(offset, 0), text.length);
+  let end = start;
+  while (start > 0 && isWord(text[start - 1] ?? "")) start -= 1;
+  while (end < text.length && isWord(text[end] ?? "")) end += 1;
+  return { start, end };
+}
+
+/**
  * The nearest hit element whose node exists in the active scene. A component
  * instance renders its master's internal nodes with their master ids, so a
  * click inside an instance resolves upward to the instance itself.
@@ -743,6 +756,9 @@ interface EditingState {
   original: string;
   /** Caret offset when entering from a double-click; undefined selects all. */
   caret?: number;
+  /** Word range selected by a double-click, like a native text field. */
+  selectionStart?: number;
+  selectionEnd?: number;
 }
 
 /* ---------------------------------------------------------------- component */
@@ -1178,7 +1194,11 @@ export function Canvas() {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.focus();
-    if (editing?.caret !== undefined) {
+    if (editing?.selectionStart !== undefined && editing.selectionEnd !== undefined) {
+      const start = Math.min(editing.selectionStart, textarea.value.length);
+      const end = Math.min(editing.selectionEnd, textarea.value.length);
+      textarea.setSelectionRange(start, end);
+    } else if (editing?.caret !== undefined) {
       const caret = Math.min(editing.caret, textarea.value.length);
       textarea.setSelectionRange(caret, caret);
     } else {
@@ -1856,7 +1876,7 @@ export function Canvas() {
     useUIStore.getState().setTool("select");
     // Framer drops a freshly created text layer straight into editing: an
     // empty box with a caret at the start, ready for the first keystroke.
-    if (session.tool === "text" && insertedId) beginTextEditing(insertedId, 0);
+    if (session.tool === "text" && insertedId) beginTextEditing(insertedId, { caret: 0 });
   };
 
   const finishMarquee = (session: MarqueeSession, event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -1937,7 +1957,10 @@ export function Canvas() {
   };
 
   /** Opens the inline text editor for a text layer, measuring it first. */
-  const beginTextEditing = (nodeId: NodeId, caret?: number): void => {
+  const beginTextEditing = (
+    nodeId: NodeId,
+    options: { caret?: number; start?: number; end?: number } = {},
+  ): void => {
     const state = useProjectStore.getState();
     const currentProject = state.project;
     const currentScene = activeSceneOf(currentProject, state.activePageId, state.editingComponent);
@@ -1960,7 +1983,10 @@ export function Canvas() {
       nodeId,
       value: props.text.content,
       original: props.text.content,
-      ...(caret !== undefined ? { caret } : {}),
+      ...(options.caret !== undefined ? { caret: options.caret } : {}),
+      ...(options.start !== undefined && options.end !== undefined
+        ? { selectionStart: options.start, selectionEnd: options.end }
+        : {}),
     });
   };
 
@@ -1983,7 +2009,14 @@ export function Canvas() {
     }
     if (node.type !== "text") return;
     event.preventDefault();
-    beginTextEditing(nodeId, caretOffsetAtPoint(nodeElement, event.clientX, event.clientY));
+    const caret = caretOffsetAtPoint(nodeElement, event.clientX, event.clientY);
+    if (caret === undefined) {
+      beginTextEditing(nodeId);
+    } else {
+      const props = resolveNodeProps(node, state.activeBreakpointId, currentProject.breakpoints);
+      const word = wordRangeAt(props.text.content, caret);
+      beginTextEditing(nodeId, { start: word.start, end: word.end });
+    }
   };
 
   /* ----------------------------------------------------------------- render */

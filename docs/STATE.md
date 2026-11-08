@@ -170,6 +170,15 @@ CMS.
   row outlined that layer on the canvas; ArrowUp stepped Position X 140→141;
   Ctrl+C then Ctrl+V added one layer with a fresh id and selected it, and
   Ctrl+A selected all nine top-level layers.
+- Selection chrome measured from Framer 3.0: 1px accent edges drawn inside the
+  layer bounds, one 9px round handle centred on the bottom-right corner for a
+  single selection (a single bounding box with four corner handles for a
+  multi-selection), and a full-accent 1px hover outline. Matched the edges,
+  the single round handle and the multi-selection bounding box. Verified in
+  WebFM: one 9x9 radius-8 handle, union box 380,600,416x257 for two layers.
+- Double-click text now selects the word under the pointer (measured in Framer:
+  double-clicking "World" in "Hello World" selected offsets 6-11). Verified in
+  WebFM: double-clicking "typing" selected offsets 11-17.
 - Measured parity pass (interpreter report, 2026-11-08): a fresh Fit/Fit "Hello"
   at 16px renders 38.56 x 19.2 (Framer: 39 x 19.2, line-height 1.2 measured in
   the canvas iframe); the Style panel now shows Width 39 / Height 19 with both

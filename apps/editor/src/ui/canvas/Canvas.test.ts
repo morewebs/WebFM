@@ -8,6 +8,7 @@ import {
   resizeSizePatch,
   STAGE_TOP,
   viewportPointToPage,
+  wordRangeAt,
   zoomPanAtPointer,
 } from "./Canvas";
 
@@ -116,5 +117,18 @@ describe("resize sizing modes", () => {
       width: { mode: "fixed", value: 100 },
       height: { mode: "fixed", value: 21 },
     });
+  });
+});
+
+describe("double-click word selection", () => {
+  it("selects the word around the caret", () => {
+    expect(wordRangeAt("Hello World", 8)).toEqual({ start: 6, end: 11 });
+    expect(wordRangeAt("Hello World", 0)).toEqual({ start: 0, end: 5 });
+    expect(wordRangeAt("Hello World", 11)).toEqual({ start: 6, end: 11 });
+  });
+
+  it("falls back to the word before whitespace", () => {
+    expect(wordRangeAt("Hello World", 5)).toEqual({ start: 0, end: 5 });
+    expect(wordRangeAt("", 0)).toEqual({ start: 0, end: 0 });
   });
 });
