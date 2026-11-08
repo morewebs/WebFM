@@ -2018,6 +2018,24 @@ export function Canvas() {
     !isNodeLocked(scene.root, singleSelectedNode.id);
 
   const hoveredNode = hoveredNodeId ? findNode(scene.root, hoveredNodeId) : null;
+  const selectionBounds = (() => {
+    let left = Number.POSITIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+    for (const nodeId of selection) {
+      const rect = rects.get(nodeId);
+      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.left + rect.width);
+      bottom = Math.max(bottom, rect.top + rect.height);
+    }
+    return Number.isFinite(left)
+      ? { left, top, width: right - left, height: bottom - top }
+      : null;
+  })();
+
   const hoverRect =
     hoveredNode &&
     hoveredNode.id !== scene.root.id &&
@@ -2243,36 +2261,50 @@ export function Canvas() {
           />
         ) : null}
 
-        {selection.map((nodeId) => {
-          // While a text layer is open in the inline editor its own blue box is
-          // the selection chrome; Framer hides the resize handles then.
-          if (editing?.nodeId === nodeId) return null;
-          const rect = rects.get(nodeId);
-          if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-          const withHandles = showHandles && nodeId === singleSelectedId;
-          return (
-            <div
-              key={nodeId}
-              className="wfm-selection"
-              style={{
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-                height: rect.height,
-              }}
-            >
-              {withHandles ? (
-                // Framer 3.0 exposes one round handle, centred on the
-                // bottom-right corner; edge resizing was replaced by this dot.
-                <div
-                  className="wfm-selection__handle"
-                  data-handle="se"
-                  style={{ left: "100%", top: "100%" }}
-                />
-              ) : null}
-            </div>
-          );
-        })}
+        {selection.length > 1 && selectionBounds ? (
+          // A multi-selection gets one bounding box around every selected
+          // layer, as in Framer, instead of a box per layer.
+          <div
+            className="wfm-selection"
+            style={{
+              left: selectionBounds.left,
+              top: selectionBounds.top,
+              width: selectionBounds.width,
+              height: selectionBounds.height,
+            }}
+          />
+        ) : (
+          selection.map((nodeId) => {
+            // While a text layer is open in the inline editor its own blue box
+            // is the selection chrome; Framer hides the resize handles then.
+            if (editing?.nodeId === nodeId) return null;
+            const rect = rects.get(nodeId);
+            if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+            const withHandles = showHandles && nodeId === singleSelectedId;
+            return (
+              <div
+                key={nodeId}
+                className="wfm-selection"
+                style={{
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                }}
+              >
+                {withHandles ? (
+                  // Framer 3.0 exposes one round handle, centred on the
+                  // bottom-right corner; edge resizing was replaced by this dot.
+                  <div
+                    className="wfm-selection__handle"
+                    data-handle="se"
+                    style={{ left: "100%", top: "100%" }}
+                  />
+                ) : null}
+              </div>
+            );
+          })
+        )}
 
         {pageGuides.map((guide) => (
           <div
