@@ -78,7 +78,10 @@ export function BottomBar() {
             { label: "Zoom in", action: () => setZoom(zoom * 1.25) },
             { label: "Zoom out", action: () => setZoom(zoom / 1.25) },
             { label: "Zoom to 100%", action: () => setZoom(1) },
-            { label: "Zoom to fit", action: () => setZoom(1) },
+            {
+              label: "Zoom to fit",
+              action: () => window.dispatchEvent(new CustomEvent("wfm:zoom-to-fit")),
+            },
             {
               label: "Reset pan",
               action: () => setPan({ x: 0, y: 0 }),

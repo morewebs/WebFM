@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   centeredStageOffset,
   clampZoom,
+  fitZoom,
   constrainDelta,
   nudgeDelta,
   resizeRect,
@@ -130,5 +131,18 @@ describe("double-click word selection", () => {
   it("falls back to the word before whitespace", () => {
     expect(wordRangeAt("Hello World", 5)).toEqual({ start: 0, end: 5 });
     expect(wordRangeAt("", 0)).toEqual({ start: 0, end: 0 });
+  });
+});
+
+describe("zoom to fit", () => {
+  it("fits the limiting axis with a margin", () => {
+    // 1400x900 viewport, 1200x1000 page: height is limiting.
+    expect(fitZoom(1400, 900, 1200, 1000)).toBeCloseTo(772 / 1000);
+    // With a short page the width is limiting.
+    expect(fitZoom(1400, 900, 1200, 400)).toBeCloseTo(1272 / 1200);
+  });
+
+  it("clamps to the editor zoom range", () => {
+    expect(fitZoom(2000, 1200, 100, 100)).toBe(4);
   });
 });

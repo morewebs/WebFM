@@ -446,9 +446,10 @@ export function zoomTo100(): void {
 }
 
 export function zoomToFit(): void {
-  const state = useProjectStore.getState();
-  state.setZoom(1);
-  state.setPan({ x: 0, y: 0 });
+  // The canvas computes the fit from its measured viewport and page size.
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("wfm:zoom-to-fit"));
+  }
 }
 
 /** Recursively sorts every frame's children by name; the root keeps its place. */

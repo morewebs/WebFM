@@ -65,7 +65,7 @@ outside this project's scope.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Pan/zoom, breakpoint bar, page root | Done | Wheel pans, Cmd/Ctrl+wheel zooms around the pointer, Cmd/Ctrl +/- zooms around the centre. |
+| Pan/zoom, breakpoint bar, page root | Done | Wheel pans, Cmd/Ctrl+wheel zooms around the pointer, Cmd/Ctrl +/- zooms around the centre; Zoom to fit sizes and centres the page in the viewport. |
 | Select/hover/move/resize/nudge | Done | Selection chrome matches Framer 3.0: 1px accent edges drawn inside the bounds, one 9px round handle at the bottom-right for a single layer, one bounding box for a multi-selection, and a full-accent 1px hover outline. |
 | Clipboard | Done | Cmd/Ctrl+C and V copy/paste layers with fresh ids (one clipboard shared with the context menu); Cmd/Ctrl+A selects every unlocked top-level layer; Cmd/Ctrl+L and Cmd/Ctrl+; toggle lock and visibility. |
 | Text editing (plain text) | Partial | The Text tool starts an empty layer with a caret; the box grows as you type and the layer beneath is hidden while editing. Enter adds a hard line break, Escape commits, and an empty layer is discarded on exit; double-click enters editing and selects the word under the pointer (Enter on a selected text does nothing, as measured in Framer). No rich text spans, links, lists or paragraph spacing. |

@@ -331,6 +331,19 @@ function closestSceneNode(
   return null;
 }
 
+/** Zoom that fits a page inside the viewport with a Framer-like margin. */
+export function fitZoom(
+  viewportWidth: number,
+  viewportHeight: number,
+  pageWidth: number,
+  pageHeight: number,
+): number {
+  const margin = 64;
+  const availableWidth = Math.max(1, viewportWidth - margin * 2);
+  const availableHeight = Math.max(1, viewportHeight - margin * 2);
+  return clampZoom(Math.min(availableWidth / pageWidth, availableHeight / pageHeight));
+}
+
 /** The DOM rect of a node in viewport coordinates. */
 function measureNodeRect(
   _stage: HTMLElement,
@@ -918,6 +931,28 @@ export function Canvas() {
     };
     window.addEventListener("wfm:add-breakpoint", handleAddBreakpoint);
     return () => window.removeEventListener("wfm:add-breakpoint", handleAddBreakpoint);
+  }, []);
+
+  // Zoom to fit is computed here, where the viewport and page sizes are known.
+  useEffect(() => {
+    const handleZoomToFit = (): void => {
+      const viewport = viewportRef.current;
+      const stage = stageRef.current;
+      if (!viewport || !stage) return;
+      const state = useProjectStore.getState();
+      const stageRect = stage.getBoundingClientRect();
+      const pageWidth = stageRect.width / state.zoom;
+      const pageHeight = stageRect.height / state.zoom;
+      if (pageWidth <= 0 || pageHeight <= 0) return;
+      const nextZoom = fitZoom(viewport.clientWidth, viewport.clientHeight, pageWidth, pageHeight);
+      state.setZoom(nextZoom);
+      state.setPan({
+        x: 0,
+        y: (viewport.clientHeight - pageHeight * nextZoom) / 2 - STAGE_TOP,
+      });
+    };
+    window.addEventListener("wfm:zoom-to-fit", handleZoomToFit);
+    return () => window.removeEventListener("wfm:zoom-to-fit", handleZoomToFit);
   }, []);
 
   useEffect(() => {
