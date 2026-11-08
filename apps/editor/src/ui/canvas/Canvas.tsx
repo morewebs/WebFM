@@ -2261,16 +2261,15 @@ export function Canvas() {
                 height: rect.height,
               }}
             >
-              {withHandles
-                ? RESIZE_HANDLES.map((entry) => (
-                    <div
-                      key={entry.handle}
-                      className="wfm-selection__handle"
-                      data-handle={entry.handle}
-                      style={{ left: `${entry.x * 100}%`, top: `${entry.y * 100}%` }}
-                    />
-                  ))
-                : null}
+              {withHandles ? (
+                // Framer 3.0 exposes one round handle, centred on the
+                // bottom-right corner; edge resizing was replaced by this dot.
+                <div
+                  className="wfm-selection__handle"
+                  data-handle="se"
+                  style={{ left: "100%", top: "100%" }}
+                />
+              ) : null}
             </div>
           );
         })}

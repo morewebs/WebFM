@@ -808,10 +808,11 @@ input {
 
 .wfm-selection__handle {
   position: absolute;
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 8px;
   background: var(--wfm-accent);
-  border: 1px solid #fff;
+  border: 0;
 }
 
 .wfm-hover {
