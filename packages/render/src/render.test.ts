@@ -528,7 +528,7 @@ describe("resolveTextStyles", () => {
     expect(styles.fontFamily).toBe('"DM Sans"');
     expect(styles.fontSize).toBe("20px");
     expect(styles.fontWeight).toBe(600);
-    expect(styles.lineHeight).toBe("normal");
+    expect(styles.lineHeight).toBe("24px");
     expect(styles.letterSpacing).toBe("1.5px");
     expect(styles.color).toBe("#112233");
     expect(styles.textAlign).toBe("center");

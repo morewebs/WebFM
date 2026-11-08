@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-07 21:55
+**Updated:** 2026-11-08 12:10
 
 ## Current milestone
 
@@ -170,6 +170,14 @@ CMS.
   row outlined that layer on the canvas; ArrowUp stepped Position X 140→141;
   Ctrl+C then Ctrl+V added one layer with a fresh id and selected it, and
   Ctrl+A selected all nine top-level layers.
+- Measured parity pass (interpreter report, 2026-11-08): a fresh Fit/Fit "Hello"
+  at 16px renders 38.56 x 19.2 (Framer: 39 x 19.2, line-height 1.2 measured in
+  the canvas iframe); the Style panel now shows Width 39 / Height 19 with both
+  selects still "hug", and typing 200 into Width switched it to Fixed while
+  Height stayed Fit; dragging the east handle 200 -> 243 kept Height Fit;
+  auto line height now resolves to 1.2x in editor and publish (test at 20px
+  expects 24px). The report's font-identity claim did not reproduce: the
+  current Inter face measures 38.56 at 16px, so the fonts were left unchanged.
 - Fidelity follow-ups: locking a frame made its child unselectable on canvas;
   Enter on a selected text opened the editor with all text selected; the
   context menu's Paste used the same clipboard as Ctrl+C/V (13→14 nodes);

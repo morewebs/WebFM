@@ -5,6 +5,7 @@ import {
   constrainDelta,
   nudgeDelta,
   resizeRect,
+  resizeSizePatch,
   STAGE_TOP,
   viewportPointToPage,
   zoomPanAtPointer,
@@ -91,5 +92,29 @@ describe("canvas geometry", () => {
     expect(nudgeDelta("ArrowLeft", 1)).toEqual({ x: -1, y: 0 });
     expect(nudgeDelta("ArrowDown", 10)).toEqual({ x: 0, y: 10 });
     expect(nudgeDelta("Enter", 1)).toBeNull();
+  });
+});
+
+describe("resize sizing modes", () => {
+  it("fixes only the axes an edge handle moves", () => {
+    expect(resizeSizePatch("e", 100.4, 20.6)).toEqual({
+      width: { mode: "fixed", value: 100 },
+    });
+    expect(resizeSizePatch("w", 100.4, 20.6)).toEqual({
+      width: { mode: "fixed", value: 100 },
+    });
+    expect(resizeSizePatch("n", 100.4, 20.6)).toEqual({
+      height: { mode: "fixed", value: 21 },
+    });
+    expect(resizeSizePatch("s", 100.4, 20.6)).toEqual({
+      height: { mode: "fixed", value: 21 },
+    });
+  });
+
+  it("fixes both axes for a corner handle", () => {
+    expect(resizeSizePatch("se", 100.4, 20.6)).toEqual({
+      width: { mode: "fixed", value: 100 },
+      height: { mode: "fixed", value: 21 },
+    });
   });
 });

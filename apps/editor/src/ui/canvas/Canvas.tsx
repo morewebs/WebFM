@@ -211,6 +211,26 @@ export function resizeRect(
   return { left, top, width, height };
 }
 
+/**
+ * The size patch a resize gesture ends with. An edge handle fixes only the
+ * axis it moves; the other axis keeps its sizing mode (a Fit height stays Fit).
+ * Corner handles fix both axes.
+ */
+export function resizeSizePatch(
+  handle: ResizeHandle,
+  width: number,
+  height: number,
+): DeepPartial<BoxProps>["size"] {
+  const patch: NonNullable<DeepPartial<BoxProps>["size"]> = {};
+  if (handle.includes("e") || handle.includes("w")) {
+    patch.width = { mode: "fixed", value: Math.max(1, Math.round(width)) };
+  }
+  if (handle.includes("n") || handle.includes("s")) {
+    patch.height = { mode: "fixed", value: Math.max(1, Math.round(height)) };
+  }
+  return patch;
+}
+
 /** Pixel delta for an arrow key, or null when the key is not an arrow. */
 export function nudgeDelta(key: string, step: number): CanvasPoint | null {
   switch (key) {
@@ -610,14 +630,17 @@ function textEditorStyle(
     // therefore gets an auto-sized textarea; a fixed-width layer keeps its
     // width and wraps.
     ...(hugWidth
-      ? { width: "auto", minWidth: 1 }
+      ? { width: "auto", minWidth: 0 }
       : { width: Math.max(1, rect.width) }),
     height: "auto",
     minHeight: Math.max(1, rect.height),
     fontFamily: text.fontFamily,
     fontSize: text.fontSize * zoom,
     fontWeight: text.fontWeight,
-    lineHeight: text.lineHeight === "auto" ? "normal" : text.lineHeight * zoom,
+    lineHeight:
+      text.lineHeight === "auto"
+        ? `${Math.round(text.fontSize * 1.2 * 100) / 100 * zoom}px`
+        : text.lineHeight * zoom,
     letterSpacing: `${text.letterSpacing * zoom}px`,
     color: text.color,
     textAlign: text.align,
@@ -1104,6 +1127,26 @@ export function Canvas() {
   useEffect(() => {
     if (tool !== "select") useProjectStore.getState().setHovered(null);
   }, [tool]);
+
+  // The Style panel shows resolved sizes for Fit/Fill layers, so it needs the
+  // rendered box. Measure the element directly: this also works in a background
+  // tab where the rects cache has not been refreshed by an animation frame.
+  useEffect(() => {
+    const selectedId = selection.length === 1 ? selection[0] : null;
+    const stage = stageRef.current;
+    const viewport = viewportRef.current;
+    const element =
+      selectedId && stage ? findNodeElement(stage, selectedId) : null;
+    const rect =
+      element && stage && viewport
+        ? measureNodeRect(stage, viewport.getBoundingClientRect(), element)
+        : selectedId
+          ? rects.get(selectedId)
+          : undefined;
+    useUIStore.getState().setSelectedSize(
+      rect ? { width: rect.width / zoom, height: rect.height / zoom } : null,
+    );
+  }, [selection, project, zoom]);
 
   /* --------------------------------------------------------------- editing */
 
@@ -1748,10 +1791,7 @@ export function Canvas() {
     }
     setSnapLines(lines);
     const patch: DeepPartial<BoxProps> = {
-      size: {
-        width: { mode: "fixed", value: Math.max(1, Math.round(adjusted.width)) },
-        height: { mode: "fixed", value: Math.max(1, Math.round(adjusted.height)) },
-      },
+      size: resizeSizePatch(session.handle, adjusted.width, adjusted.height),
     };
     if (session.movable) {
       patch.position = {

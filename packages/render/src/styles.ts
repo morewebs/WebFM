@@ -367,7 +367,11 @@ export function resolveTextStyles(text: TextContent): CSSProperties {
     fontFamily: fontFamilyToCss(text.fontFamily),
     fontSize: `${text.fontSize}px`,
     fontWeight: text.fontWeight,
-    lineHeight: text.lineHeight === "auto" ? "normal" : `${text.lineHeight}px`,
+    // Framer's canvas resolves Auto to 1.2 x the font size (19.2px at 16px).
+    lineHeight:
+      text.lineHeight === "auto"
+        ? `${Math.round(text.fontSize * 1.2 * 100) / 100}px`
+        : `${text.lineHeight}px`,
     letterSpacing: `${text.letterSpacing}px`,
     color: text.color,
     textAlign: text.align,

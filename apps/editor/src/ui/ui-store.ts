@@ -38,6 +38,8 @@ interface UIState {
   rulersVisible: boolean;
   /** Page guides drawn on the canvas. On by default, like Framer. */
   guidesVisible: boolean;
+  /** Rendered size (page px) of the single selected layer, for the inspector. */
+  selectedSize: { width: number; height: number } | null;
   setTool(tool: EditorTool): void;
   setLeftTab(tab: LeftTab): void;
   setRightTab(tab: RightTab): void;
@@ -50,6 +52,7 @@ interface UIState {
   setZoomMenuOpen(open: boolean): void;
   setRulersVisible(visible: boolean): void;
   setGuidesVisible(visible: boolean): void;
+  setSelectedSize(size: { width: number; height: number } | null): void;
   toggleRulers(): void;
   toggleGuides(): void;
   openContextMenu(menu: ContextMenuState): void;
@@ -71,6 +74,7 @@ export const useUIStore = create<UIState>()((set) => ({
   contextMenu: null,
   rulersVisible: false,
   guidesVisible: true,
+  selectedSize: null,
   setTool: (tool) => set({ tool }),
   setLeftTab: (leftTab) => set({ leftTab, insertOpen: false }),
   setRightTab: (rightTab) => set({ rightTab }),
@@ -85,6 +89,7 @@ export const useUIStore = create<UIState>()((set) => ({
   setGuidesVisible: (guidesVisible) => set({ guidesVisible }),
   toggleRulers: () => set((state) => ({ rulersVisible: !state.rulersVisible })),
   toggleGuides: () => set((state) => ({ guidesVisible: !state.guidesVisible })),
+  setSelectedSize: (selectedSize) => set({ selectedSize }),
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: null }),
   closeMenus: () =>

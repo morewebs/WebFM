@@ -90,7 +90,7 @@ outside this project's scope.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Size fixed/relative/fill/fit content/viewport | Done | Viewport emits vw/vh; min/max fields added. |
+| Size fixed/relative/fill/fit content/viewport | Done | Viewport emits vw/vh; min/max fields added. Fit/Fill fields show the resolved rendered size, and typing a number fixes that axis. Edge resize handles fix only the axis they move. |
 | Min/max sizing/constraints/aspect ratio | Partial | Min/max fields added with clear; auto-pin/constraints and aspect-ratio UI still missing. |
 | Layout none/stack/grid; direction/gap/padding/align/justify/wrap | Done | |
 | Grid columns/rows/gaps | Done | |
@@ -104,7 +104,7 @@ outside this project's scope.
 | Opacity/blend modes | Partial | Opacity UI; blend modes model/renderer only. |
 | Visual effects (blur, backdrop, etc.) | Missing | Effects section is currently interactions. |
 | Overflow clip/hidden/visible/scroll + X/Y | Done | Per-axis selects and scroll added. |
-| Typography: family/size/weight/line height/spacing/color/align/italic/underline/case | Done | Static font list. |
+| Typography: family/size/weight/line height/spacing/color/align/italic/underline/case | Done | Static font list. Auto line height resolves to 1.2 x the font size (19.2px at 16px), matching Framer's canvas. |
 | Google Fonts/custom font picker | Partial | Curated Google Fonts catalog works; custom font upload missing. |
 | Text styles | Done | Text style control at the top of Typography: "None"/saved styles, linked badge, Detach; style edits propagate across pages and component variants. Detaching at a breakpoint freezes the resolved typography. Paragraph spacing and rich-text spans remain missing. |
 | Paragraph spacing/rich text | Missing | No paragraph spacing, lists, links or rich-text spans. |

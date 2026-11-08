@@ -69,6 +69,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { activeSceneOf, useProjectStore } from "../../state/project-store";
 import { ensureFontLoaded } from "../fonts";
 import { Icon } from "../icons";
+import { useUIStore } from "../ui-store";
 import "./PropertiesPanel.css";
 
 /* ------------------------------------------------------------------ helpers */
@@ -1089,23 +1090,31 @@ function BreakpointSection({ nodeId, box }: BreakpointSectionProps) {
   const fallbackPositionMode: PositionMode = parentLayout === "none" ? "absolute" : "relative";
   const positionMode = box.position.mode ?? fallbackPositionMode;
 
-  const widthNumber = numericSize(box.size.width);
-  const heightNumber = numericSize(box.size.height);
+  const selectedSize = useUIStore((state) => state.selectedSize);
+  // Fit/Fill layers show the size they actually render at, like Framer.
+  const widthNumber =
+    numericSize(box.size.width) ?? (selectedSize ? Math.round(selectedSize.width) : null);
+  const heightNumber =
+    numericSize(box.size.height) ?? (selectedSize ? Math.round(selectedSize.height) : null);
   const ratio =
     widthNumber !== null && heightNumber !== null && widthNumber > 0 && heightNumber > 0
       ? widthNumber / heightNumber
       : null;
 
+  // Typing a number into a Fit/Fill field fixes that axis, as Framer does.
+  const fixedMode = (size: SizeValue): SizeMode =>
+    size.mode === "hug" || size.mode === "fill" ? "fixed" : size.mode;
+
   const writeSize = (axis: "width" | "height", value: number) => {
     const current = box.size[axis];
-    const next: SizeValue = { mode: current.mode, value };
+    const next: SizeValue = { mode: fixedMode(current), value };
     const patch: DeepPartial<SizeProps> = {};
     if (linked && ratio !== null) {
       if (axis === "width") {
         patch.width = next;
-        patch.height = { mode: box.size.height.mode, value: Math.round(value / ratio) };
+        patch.height = { mode: fixedMode(box.size.height), value: Math.round(value / ratio) };
       } else {
-        patch.width = { mode: box.size.width.mode, value: Math.round(value * ratio) };
+        patch.width = { mode: fixedMode(box.size.width), value: Math.round(value * ratio) };
         patch.height = next;
       }
     } else {
