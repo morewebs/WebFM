@@ -2,7 +2,7 @@
 
 Living record. Update after every integrated milestone. Dates are absolute.
 
-**Updated:** 2026-11-08 13:20
+**Updated:** 2026-11-08 13:33
 
 ## Current milestone
 
@@ -170,6 +170,11 @@ CMS.
   row outlined that layer on the canvas; ArrowUp stepped Position X 140→141;
   Ctrl+C then Ctrl+V added one layer with a fresh id and selected it, and
   Ctrl+A selected all nine top-level layers.
+- Empty editor affordance (2026-11-08): a fresh text layer used to show only a
+  1px line, so the editing state was easy to miss. The empty editor now renders
+  an 8x19.2 accent-tinted box with an outline and caret, and while editing the
+  Style panel reports the editor's box (Width 8 / Height 19) instead of 0/0.
+  Verified in the running editor by screenshot.
 - Editing focus (2026-11-08): a trusted mouse click performs a default focus
   change after pointerup, which could blur the just-opened text editor, run
   closeEditor(true) and delete the empty layer — invisible to synthetic checks

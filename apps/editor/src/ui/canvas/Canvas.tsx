@@ -648,18 +648,21 @@ function textEditorStyle(
   text: TextContent,
   zoom: number,
   hugWidth: boolean,
+  empty: boolean,
 ): CSSProperties {
   return {
     left: rect.left,
     top: rect.top,
     // Framer's editor grows with the text it contains. A Fit Content layer
     // therefore gets an auto-sized textarea; a fixed-width layer keeps its
-    // width and wraps.
+    // width and wraps. An empty layer still gets a small visible box so the
+    // editing state is obvious on a blank page.
     ...(hugWidth
-      ? { width: "auto", minWidth: 0 }
+      ? { width: "auto", minWidth: empty ? 8 : 0 }
       : { width: Math.max(1, rect.width) }),
     height: "auto",
     minHeight: Math.max(1, rect.height),
+    ...(empty ? { background: "rgb(0 153 255 / 6%)" } : {}),
     fontFamily: text.fontFamily,
     fontSize: text.fontSize * zoom,
     fontWeight: text.fontWeight,
@@ -1160,6 +1163,17 @@ export function Canvas() {
   // tab where the rects cache has not been refreshed by an animation frame.
   useEffect(() => {
     const selectedId = selection.length === 1 ? selection[0] : null;
+    if (editing && selectedId && editing.nodeId === selectedId) {
+      const textarea = textareaRef.current;
+      if (textarea) {
+        const box = textarea.getBoundingClientRect();
+        useUIStore.getState().setSelectedSize({
+          width: box.width / zoom,
+          height: box.height / zoom,
+        });
+        return;
+      }
+    }
     const stage = stageRef.current;
     const viewport = viewportRef.current;
     const element =
@@ -1173,7 +1187,7 @@ export function Canvas() {
     useUIStore.getState().setSelectedSize(
       rect ? { width: rect.width / zoom, height: rect.height / zoom } : null,
     );
-  }, [selection, project, zoom]);
+  }, [selection, project, zoom, editing, rects]);
 
   /* --------------------------------------------------------------- editing */
 
@@ -2464,6 +2478,7 @@ export function Canvas() {
             editedText,
             zoom,
             editedSize?.width.mode === "hug",
+            editing.value.length === 0,
           )}
           value={editing.value}
           aria-label="Edit text"
