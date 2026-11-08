@@ -1033,31 +1033,6 @@ export function Canvas() {
         }
       }
 
-      if (
-        event.key === "Enter" &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.target === document.body
-      ) {
-        const state = useProjectStore.getState();
-        const currentProject = state.project;
-        const currentScene = activeSceneOf(
-          currentProject,
-          state.activePageId,
-          state.editingComponent,
-        );
-        const selectedId = state.selection.length === 1 ? state.selection[0] : undefined;
-        const node =
-          currentScene && selectedId ? findNode(currentScene.root, selectedId) : null;
-        if (currentScene && node?.type === "text" && !isNodeLocked(currentScene.root, node.id)) {
-          event.preventDefault();
-          beginTextEditing(node.id);
-        }
-        return;
-      }
-
       if (event.code === "Space" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         spaceRef.current = true;
         setSpaceDown(true);

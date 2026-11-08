@@ -188,7 +188,8 @@ CMS.
   expects 24px). The report's font-identity claim did not reproduce: the
   current Inter face measures 38.56 at 16px, so the fonts were left unchanged.
 - Fidelity follow-ups: locking a frame made its child unselectable on canvas;
-  Enter on a selected text opened the editor with all text selected; the
+  Enter on a selected text used to open the editor, but Framer was measured to
+  do nothing there, so that extra binding was removed; the
   context menu's Paste used the same clipboard as Ctrl+C/V (13→14 nodes);
   Ctrl+L and Ctrl+; toggled lock and visibility; Shift-click in the layer tree
   selected a contiguous five-row range; selecting a layer expanded its
