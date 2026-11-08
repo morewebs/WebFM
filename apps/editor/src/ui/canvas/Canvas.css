@@ -218,7 +218,9 @@
 .wfm-canvas-hover {
   position: absolute;
   pointer-events: none;
-  outline: 1px solid #0099ff;
+  /* Framer draws the 1px accent inside the layer's bounds. */
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--wfm-accent);
 }
 
 .wfm-canvas-overlay .wfm-selection__handle {
